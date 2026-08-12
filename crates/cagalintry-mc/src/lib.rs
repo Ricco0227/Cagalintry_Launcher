@@ -7,6 +7,7 @@ pub mod launch;
 pub mod loader;
 pub mod maven;
 pub mod meta;
+pub mod neoforge;
 pub mod paths;
 pub mod rules;
 

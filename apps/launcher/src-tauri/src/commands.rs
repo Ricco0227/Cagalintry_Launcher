@@ -253,39 +253,61 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
 
     emit_stage(app, id, "Resolving version");
 
-    // A loader profile is a version document like any other, so making it
-    // available first means everything below this line is loader-agnostic.
-    let version_id = state
-        .loaders()
-        .ensure_profile(
-            instance.loader.kind,
-            &instance.mc_version,
-            instance.loader.version.as_deref().unwrap_or_default(),
-        )
-        .await?;
-
     let installer = state.installer();
     let manifest = installer.version_manifest().await?;
-    let detail = installer.version_detail(&manifest, &version_id).await?;
-    let resolved = installer.resolve(&detail)?;
 
-    let plan = installer.plan(&resolved).await?;
-    let (progress, pump) = progress_channel(app.clone(), id, plan.file_count as u64, plan.total_bytes);
+    // Vanilla is resolved and installed first regardless of loader. Every
+    // loader profile inherits from it, and NeoForge additionally needs the
+    // vanilla client jar and a JVM on disk before its install can even run —
+    // its patched client is derived from them locally.
+    let vanilla = installer.resolve(&installer.version_detail(&manifest, &instance.mc_version).await?)?;
 
-    emit_stage(app, id, "Downloading");
-    installer.install(&resolved, Some(&progress)).await?;
+    let plan = installer.plan(&vanilla).await?;
+    let (progress, pump) =
+        progress_channel(app.clone(), id, plan.file_count as u64, plan.total_bytes);
+
+    emit_stage(app, id, "Downloading Minecraft");
+    installer.install(&vanilla, Some(&progress)).await?;
 
     emit_stage(app, id, "Preparing Java");
     let java_override = state.java_override(instance.java_path.as_deref()).await;
     let java = state
         .java()
         .provide(
-            resolved.java_component(),
-            resolved.java_major_version(),
+            vanilla.java_component(),
+            vanilla.java_major_version(),
             java_override.as_deref(),
             Some(&progress),
         )
         .await?;
+
+    // With vanilla in place, the loader profile can be produced and then
+    // resolved like any other version document — everything below this point
+    // is loader-agnostic.
+    let resolved = if instance.loader.kind == LoaderKind::Vanilla {
+        vanilla
+    } else {
+        emit_stage(app, id, &format!("Installing {}", instance.loader.kind.display_name()));
+
+        let version_id = state
+            .loaders()
+            .ensure_profile(
+                instance.loader.kind,
+                &instance.mc_version,
+                instance.loader.version.as_deref().unwrap_or_default(),
+                &java.executable,
+                &vanilla.client_jar,
+                Some(&progress),
+            )
+            .await?;
+
+        let detail = installer.version_detail(&manifest, &version_id).await?;
+        let resolved = installer.resolve(&detail)?;
+
+        emit_stage(app, id, "Downloading mod loader");
+        installer.install(&resolved, Some(&progress)).await?;
+        resolved
+    };
 
     // Stop the aggregator before launching so no stale progress arrives after
     // the game window is up.

@@ -37,14 +37,46 @@ pub enum LoaderError {
     #[error("{loader} has no builds for Minecraft {mc_version}")]
     Unsupported { loader: &'static str, mc_version: String },
 
-    #[error("{0} support is not implemented yet")]
-    NotImplemented(&'static str),
-
     #[error("could not read the version profile {loader} returned: {source}")]
     Profile {
         loader: &'static str,
         #[source]
         source: serde_json::Error,
+    },
+
+    #[error("reading {path}: {source}")]
+    Archive {
+        path: String,
+        #[source]
+        source: zip::result::ZipError,
+    },
+
+    #[error("the NeoForge {version} installer uses format spec {spec}, which this launcher does not understand")]
+    UnsupportedInstaller { version: String, spec: u32 },
+
+    #[error("processor {jar} cannot be run: {reason}")]
+    BadProcessor { jar: String, reason: String },
+
+    #[error(
+        "NeoForge install step {step} of {total} ({jar}) failed{}\n{detail}",
+        .code.map(|c| format!(" with exit code {c}")).unwrap_or_default()
+    )]
+    ProcessorFailed {
+        step: usize,
+        total: usize,
+        jar: String,
+        code: Option<i32>,
+        detail: String,
+    },
+
+    #[error("the NeoForge install finished but produced no {expected}")]
+    ProcessorProducedNothing { expected: String },
+
+    #[error("{path} did not match its expected checksum: expected {expected}, got {actual}")]
+    OutputMismatch {
+        path: String,
+        expected: String,
+        actual: String,
     },
 }
 
@@ -171,11 +203,19 @@ impl LoaderInstaller {
 
     /// Make a loader's version profile available under `meta/versions`, so the
     /// ordinary install path can resolve it. Returns the version id to launch.
+    ///
+    /// `java` and `vanilla_client_jar` are only used by NeoForge, whose install
+    /// derives a patched client by running tools locally. They are passed
+    /// unconditionally so callers have one entry point rather than a match on
+    /// loader kind.
     pub async fn ensure_profile(
         &self,
         kind: LoaderKind,
         mc_version: &str,
         loader_version: &str,
+        java: &std::path::Path,
+        vanilla_client_jar: &std::path::Path,
+        progress: Option<&cagalintry_net::ProgressSender>,
     ) -> Result<String, LoaderError> {
         let version_id = profile_version_id(kind, mc_version, loader_version);
 
@@ -193,11 +233,14 @@ impl LoaderInstaller {
             ),
 
             LoaderKind::NeoForge => {
-                // Requires running the installer's processor chain locally to
-                // produce a patched client jar. Refused explicitly rather than
-                // written half-done, because a partial install fails much later
-                // with an error that says nothing useful.
-                return Err(LoaderError::NotImplemented("NeoForge"));
+                // No ready-made profile exists: the installer's processors have
+                // to run locally to derive a patched client.
+                return crate::neoforge::NeoForgeInstaller::new(
+                    self.downloader.clone(),
+                    self.dirs.clone(),
+                )
+                .install(loader_version, java, vanilla_client_jar, progress)
+                .await;
             }
         };
 
@@ -413,27 +456,23 @@ mod tests {
 
     #[test]
     fn vanilla_needs_no_profile() {
-        // Not a loader; the Minecraft version is launched directly.
+        // Not a loader; the Minecraft version is launched directly, so this
+        // must not touch the network even with nonsense paths.
         let dirs = DataDirs::with_root("/tmp/cagalintry-loader-test");
         let installer = LoaderInstaller::new(Downloader::new().unwrap(), dirs);
 
         let id = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap()
-            .block_on(installer.ensure_profile(LoaderKind::Vanilla, "1.21.4", ""))
+            .block_on(installer.ensure_profile(
+                LoaderKind::Vanilla,
+                "1.21.4",
+                "",
+                std::path::Path::new("java"),
+                std::path::Path::new("client.jar"),
+                None,
+            ))
             .unwrap();
         assert_eq!(id, "1.21.4");
-    }
-
-    #[test]
-    fn neoforge_is_refused_clearly_rather_than_half_installed() {
-        let dirs = DataDirs::with_root("/tmp/cagalintry-loader-test");
-        let installer = LoaderInstaller::new(Downloader::new().unwrap(), dirs);
-
-        let result = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap()
-            .block_on(installer.ensure_profile(LoaderKind::NeoForge, "1.21.4", "21.4.30"));
-        assert!(matches!(result, Err(LoaderError::NotImplemented("NeoForge"))));
     }
 }
