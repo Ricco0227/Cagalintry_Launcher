@@ -1,0 +1,33 @@
+# Rust
+/target
+**/target
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment / secrets — never commit the Azure client ID or JWT secrets
+.env
+.env.*
+!.env.example
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# Tauri build output
+apps/launcher/src-tauri/gen/
+
+# The self-hosted sync API is kept out of this repository entirely. It lives on
+# disk beside the launcher as its own standalone Cargo workspace, sharing
+# `crates/cagalintry-proto` by path so the wire types can never drift.
+apps/sync-server/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

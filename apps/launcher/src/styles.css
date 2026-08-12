@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+/* Theme is driven by an attribute on <html> rather than the OS, because the
+   launcher exposes an explicit setting. "system" resolves to an attribute at
+   startup, so there is exactly one source of truth here. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------------------------------------------------------------------------
+   Semantic tokens.
+
+   Components only ever reference these names, never a raw hex value. That is
+   what lets an instance page re-tint itself from its own cover art by
+   overriding --accent on a single wrapper element.
+   --------------------------------------------------------------------------- */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0a0a0e;
+  --bg-elevated: #0f0f14;
+  --surface: #131318;
+  --surface-2: #1b1b22;
+  --surface-3: #24242d;
+
+  --border: #26262f;
+  --border-strong: #383843;
+
+  --text: #f2f2f5;
+  --text-muted: #a0a0ae;
+  --text-subtle: #6c6c7a;
+
+  --accent: #7c5cff;
+  --accent-hover: #8f73ff;
+  --accent-active: #6a49f0;
+  --accent-fg: #ffffff;
+  --accent-soft: rgb(124 92 255 / 0.14);
+  --accent-ring: rgb(124 92 255 / 0.45);
+
+  --success: #3ecf8e;
+  --warning: #f5a524;
+  --danger: #f4635b;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+  --shadow-pop: 0 12px 48px -12px rgb(0 0 0 / 0.7);
+  --scrim: linear-gradient(to top, rgb(10 10 14 / 0.95) 12%, rgb(10 10 14 / 0.55) 45%, transparent);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f6f6f8;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f1f1f4;
+  --surface-3: #e6e6ec;
+
+  --border: #e3e3e9;
+  --border-strong: #cbcbd6;
+
+  --text: #16161a;
+  --text-muted: #5a5a68;
+  --text-subtle: #8a8a98;
+
+  --accent: #6544f0;
+  --accent-hover: #7458f5;
+  --accent-active: #5636dd;
+  --accent-fg: #ffffff;
+  --accent-soft: rgb(101 68 240 / 0.1);
+  --accent-ring: rgb(101 68 240 / 0.4);
+
+  --success: #1a9c62;
+  --warning: #b8730a;
+  --danger: #d63b34;
+
+  --shadow-card: 0 1px 2px rgb(16 16 26 / 0.06), 0 8px 24px -12px rgb(16 16 26 / 0.14);
+  --shadow-pop: 0 12px 48px -12px rgb(16 16 26 / 0.24);
+  --scrim: linear-gradient(to top, rgb(255 255 255 / 0.96) 12%, rgb(255 255 255 / 0.6) 45%, transparent);
+}
+
+/* `inline` makes the generated utilities reference the custom property itself,
+   so overriding --accent on a subtree instantly re-tints everything under it. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --font-sans: "Segoe UI Variable Display", "Segoe UI", -apple-system,
+    BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", ui-monospace, "SF Mono",
+    Consolas, monospace;
+
+  --radius-card: 14px;
+  --radius-control: 10px;
+
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  /* This is an app window, not a document — rubber-banding and text selection
+     on chrome both read as bugs here. */
+  overflow: hidden;
+  overscroll-behavior: none;
+  user-select: none;
+  cursor: default;
+}
+
+/* Selection stays available where content is genuinely text: logs, changelogs,
+   descriptions, and anything a person might want to copy. */
+input,
+textarea,
+[data-selectable] {
+  user-select: text;
+  cursor: auto;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+  font-weight: 650;
+}
+
+/* Thin, self-effacing scrollbars — the launcher has a lot of scrollable panes
+   and default Windows bars dominate them. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-subtle);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

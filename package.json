@@ -1,0 +1,13 @@
+{
+  "name": "cagalintry",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/launcher"
+  ],
+  "scripts": {
+    "dev": "npm run tauri -w cagalintry-launcher-ui -- dev",
+    "build": "npm run tauri -w cagalintry-launcher-ui -- build",
+    "typecheck": "npm run typecheck -w cagalintry-launcher-ui"
+  }
+}

@@ -1,0 +1,96 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/cagalintry-proto",
+    "crates/cagalintry-net",
+    "crates/cagalintry-mc",
+    "crates/cagalintry-auth",
+    "crates/cagalintry-modrinth",
+    "crates/cagalintry-sync",
+    "apps/launcher/src-tauri",
+]
+
+# The sync server is deliberately kept out of the public repository, so it is
+# its own standalone workspace rather than a member of this one — a missing
+# member directory is a hard error, an excluded one is not.
+exclude = ["apps/sync-server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+authors = ["Ricco0227"]
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+# Internal
+cagalintry-proto = { path = "crates/cagalintry-proto" }
+cagalintry-net = { path = "crates/cagalintry-net" }
+cagalintry-mc = { path = "crates/cagalintry-mc" }
+cagalintry-auth = { path = "crates/cagalintry-auth" }
+cagalintry-modrinth = { path = "crates/cagalintry-modrinth" }
+cagalintry-sync = { path = "crates/cagalintry-sync" }
+
+# Async runtime + HTTP.
+#
+# TLS goes through the platform stack (Schannel on Windows, Security.framework
+# on macOS, OpenSSL on Linux) rather than rustls. Both rustls crypto providers
+# need a C toolchain this project would otherwise not require: aws-lc-rs runs
+# bindgen and needs clang, and ring needs clang specifically on Windows on ARM,
+# where MSVC's ARM64 assembler isn't supported by its build. Schannel is already
+# present on every Windows machine, follows the OS trust store, and gets patched
+# by Windows Update. Swapping back to rustls later is a change to this line
+# plus a provider install at startup.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "process", "sync", "time", "io-util"] }
+tokio-util = { version = "0.7", features = ["io"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "native-tls",
+    "json",
+    "stream",
+    "charset",
+    "http2",
+] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Errors + logging
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Storage. SQLite is a local file on both sides, so no TLS feature is pulled in.
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "macros", "migrate", "json", "time", "uuid"] }
+
+# Hashing + archives
+sha1 = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Misc
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+time = { version = "0.3", features = ["serde", "serde-well-known", "formatting", "parsing", "macros"] }
+dirs = "6"
+url = { version = "2", features = ["serde"] }
+md-5 = "0.10"
+
+[profile.dev]
+# Dependencies compiled with optimisation keeps hashing and unzip work tolerable
+# in dev builds without slowing down iteration on our own crates.
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
