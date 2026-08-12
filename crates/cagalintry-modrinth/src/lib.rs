@@ -4,6 +4,7 @@
 //! identifying User-Agent their documentation requires — they call out bare
 //! library defaults as unacceptable.
 
+pub mod markdown;
 pub mod rate_limit;
 pub mod types;
 
@@ -12,7 +13,8 @@ use cagalintry_proto::{EntryKind, LoaderKind};
 
 pub use rate_limit::RateLimiter;
 pub use types::{
-    Dependency, FileHashes, Project, SearchHit, SearchResults, Version, VersionFile,
+    Dependency, FileHashes, GalleryImage, Project, ProjectPage, SearchHit, SearchResults, Version,
+    VersionFile,
 };
 
 const API_BASE: &str = "https://api.modrinth.com/v2";

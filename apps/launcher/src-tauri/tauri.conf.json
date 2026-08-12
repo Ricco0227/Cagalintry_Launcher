@@ -30,7 +30,7 @@
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
         "font-src": "'self' data:",
-        "img-src": "'self' asset: http://asset.localhost data: blob: https://cdn.modrinth.com https://api.modrinth.com https://crafatar.com https://mc-heads.net",
+        "img-src": "'self' asset: http://asset.localhost data: blob: https:",
         "connect-src": "'self' ipc: http://ipc.localhost"
       },
       "assetProtocol": {

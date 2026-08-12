@@ -19,6 +19,8 @@ thiserror.workspace = true
 tracing.workspace = true
 time.workspace = true
 url.workspace = true
+pulldown-cmark = "0.13.4"
+ammonia = "4.1.4"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "test-util"] }

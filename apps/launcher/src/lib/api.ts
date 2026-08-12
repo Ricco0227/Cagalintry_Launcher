@@ -112,6 +112,48 @@ export interface SearchResults {
   totalHits: number;
 }
 
+export interface GalleryImage {
+  url: string;
+  title?: string;
+  description?: string;
+  featured: boolean;
+}
+
+/**
+ * A project's full page. `bodyHtml` is the description rendered from Markdown
+ * and sanitised in Rust — scripts, event handlers and inline styles are already
+ * gone by the time it arrives here.
+ */
+export interface ProjectPage {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  bodyHtml: string;
+  iconUrl?: string;
+  downloads: number;
+  followers: number;
+  categories: string[];
+  clientSide?: string;
+  serverSide?: string;
+  sourceUrl?: string;
+  issuesUrl?: string;
+  wikiUrl?: string;
+  discordUrl?: string;
+  gallery: GalleryImage[];
+}
+
+export interface ModrinthVersion {
+  id: string;
+  projectId: string;
+  name: string;
+  versionNumber: string;
+  versionType: "release" | "beta" | "alpha";
+  gameVersions: string[];
+  loaders: string[];
+  downloads: number;
+}
+
 export type Theme = "system" | "light" | "dark";
 
 export interface Settings {
@@ -189,6 +231,12 @@ export const searchContent = (params: {
   offset?: number;
   limit?: number;
 }) => invoke<SearchResults>("search_content", params);
+
+export const getProject = (projectId: string) =>
+  invoke<ProjectPage>("get_project", { projectId });
+
+export const listProjectVersions = (id: string, projectId: string, kind: EntryKind) =>
+  invoke<ModrinthVersion[]>("list_project_versions", { id, projectId, kind });
 
 export const listContent = (id: string) => invoke<PackEntry[]>("list_content", { id });
 

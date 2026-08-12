@@ -45,6 +45,8 @@ fn main() {
             commands::launch_instance,
             commands::kill_instance,
             commands::search_content,
+            commands::get_project,
+            commands::list_project_versions,
             commands::list_content,
             commands::install_content,
             commands::remove_content,

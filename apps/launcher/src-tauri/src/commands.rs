@@ -12,7 +12,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use cagalintry_mc::launch::{self, GameOutput, LaunchOptions, LaunchSession};
 use cagalintry_net::DownloadEvent;
 use cagalintry_mc::LoaderVersion;
-use cagalintry_modrinth::{SearchQuery, SearchResults, VersionFilter};
+use cagalintry_modrinth::{
+    ProjectPage, SearchQuery, SearchResults, Version as ModrinthVersion, VersionFilter,
+};
 use cagalintry_proto::{EntryKind, LoaderKind, LoaderSpec, PackEntry};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter as _, State};
@@ -215,6 +217,35 @@ pub async fn search_content(
         limit: limit.unwrap_or(20),
     };
     Ok(state.modrinth().search(&search).await?)
+}
+
+/// A project's full page: metadata, links, gallery, and its description
+/// rendered to sanitised HTML.
+#[tauri::command]
+pub async fn get_project(
+    state: State<'_, Arc<AppState>>,
+    project_id: String,
+) -> CommandResult<ProjectPage> {
+    Ok(state.modrinth().project(&project_id).await?.into())
+}
+
+/// Every version of a project this instance could use, newest first.
+#[tauri::command]
+pub async fn list_project_versions(
+    state: State<'_, Arc<AppState>>,
+    id: Uuid,
+    project_id: String,
+    kind: EntryKind,
+) -> CommandResult<Vec<ModrinthVersion>> {
+    let instance = state.instances.get(id).await?;
+
+    let filter = VersionFilter {
+        mc_version: Some(instance.mc_version),
+        loader: Some(instance.loader.kind),
+        apply_loader: kind == EntryKind::Mod,
+    };
+
+    Ok(state.modrinth().versions(&project_id, &filter).await?)
 }
 
 #[tauri::command]

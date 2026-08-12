@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 
 import type { GameLogLine, InstallProgress } from "./api";
@@ -55,13 +56,26 @@ export const useLauncherStore = create<LauncherState>((set) => ({
     set((state) => ({ logs: { ...state.logs, [instanceId]: [] } })),
 }));
 
-/** Installs currently in flight, for the task drawer. */
+/**
+ * Installs currently in flight, for the task drawer.
+ *
+ * The filtering deliberately happens in a memo rather than inside the selector.
+ * A selector that builds a new array returns a different reference every time
+ * it runs, and `useSyncExternalStore` treats that as "the store changed" — so
+ * it re-renders, re-runs the selector, gets another new array, and loops until
+ * React aborts with "Maximum update depth exceeded". Selecting the stable
+ * `progress` object and deriving from it keeps the snapshot identity stable.
+ */
 export function useActiveTasks(): InstallProgress[] {
-  return useLauncherStore((state) =>
-    Object.values(state.progress).filter(
-      // A finished install reports every byte accounted for; keep it out of the
-      // drawer rather than leaving a permanent 100% row.
-      (task) => task.totalBytes === 0 || task.downloadedBytes < task.totalBytes,
-    ),
+  const progress = useLauncherStore((state) => state.progress);
+
+  return useMemo(
+    () =>
+      Object.values(progress).filter(
+        // A finished install reports every byte accounted for; keep it out of
+        // the drawer rather than leaving a permanent 100% row.
+        (task) => task.totalBytes === 0 || task.downloadedBytes < task.totalBytes,
+      ),
+    [progress],
   );
 }

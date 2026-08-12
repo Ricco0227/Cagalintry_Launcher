@@ -8,6 +8,7 @@ use cagalintry_proto::{ContentSource, EntryKind, Hashes, PackEntry, Side};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all(serialize = "camelCase"))]
 pub struct SearchResults {
     pub hits: Vec<SearchHit>,
     pub offset: u32,
@@ -16,7 +17,11 @@ pub struct SearchResults {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+// Asymmetric on purpose. Modrinth sends snake_case, which matches the field
+// names, so deserialisation needs no renaming. But these same structs are
+// handed to the frontend, where everything else is camelCase — serialising as
+// snake_case there silently yields `undefined` for every multi-word field.
+#[serde(rename_all(serialize = "camelCase"))]
 pub struct SearchHit {
     pub project_id: String,
     pub slug: String,
@@ -40,12 +45,18 @@ pub struct SearchHit {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+// Asymmetric on purpose. Modrinth sends snake_case, which matches the field
+// names, so deserialisation needs no renaming. But these same structs are
+// handed to the frontend, where everything else is camelCase — serialising as
+// snake_case there silently yields `undefined` for every multi-word field.
+#[serde(rename_all(serialize = "camelCase"))]
 pub struct Project {
     pub id: String,
     pub slug: String,
     pub title: String,
     pub description: String,
+    /// The full description, in Markdown. Rendered and sanitised before it
+    /// reaches the UI — see [`crate::markdown`].
     #[serde(default)]
     pub body: Option<String>,
     #[serde(default)]
@@ -53,15 +64,66 @@ pub struct Project {
     #[serde(default)]
     pub downloads: u64,
     #[serde(default)]
+    pub followers: u64,
+    #[serde(default)]
     pub categories: Vec<String>,
     #[serde(default)]
     pub client_side: Option<String>,
     #[serde(default)]
     pub server_side: Option<String>,
+    #[serde(default)]
+    pub source_url: Option<String>,
+    #[serde(default)]
+    pub issues_url: Option<String>,
+    #[serde(default)]
+    pub wiki_url: Option<String>,
+    #[serde(default)]
+    pub discord_url: Option<String>,
+    #[serde(default)]
+    pub gallery: Vec<GalleryImage>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all(serialize = "camelCase"))]
+pub struct GalleryImage {
+    pub url: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub featured: bool,
+}
+
+/// A project plus its description already rendered to safe HTML.
+///
+/// Rendering happens here rather than in the frontend so untrusted Markdown is
+/// sanitised before crossing into the webview.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectPage {
+    #[serde(flatten)]
+    pub project: Project,
+    pub body_html: String,
+}
+
+impl From<Project> for ProjectPage {
+    fn from(project: Project) -> Self {
+        let body_html = project
+            .body
+            .as_deref()
+            .map(crate::markdown::to_safe_html)
+            .unwrap_or_default();
+        Self { project, body_html }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+// Asymmetric on purpose. Modrinth sends snake_case, which matches the field
+// names, so deserialisation needs no renaming. But these same structs are
+// handed to the frontend, where everything else is camelCase — serialising as
+// snake_case there silently yields `undefined` for every multi-word field.
+#[serde(rename_all(serialize = "camelCase"))]
 pub struct Version {
     pub id: String,
     pub project_id: String,
@@ -83,7 +145,11 @@ pub struct Version {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+// Asymmetric on purpose. Modrinth sends snake_case, which matches the field
+// names, so deserialisation needs no renaming. But these same structs are
+// handed to the frontend, where everything else is camelCase — serialising as
+// snake_case there silently yields `undefined` for every multi-word field.
+#[serde(rename_all(serialize = "camelCase"))]
 pub struct Dependency {
     #[serde(default)]
     pub project_id: Option<String>,
@@ -94,7 +160,11 @@ pub struct Dependency {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
+// Asymmetric on purpose. Modrinth sends snake_case, which matches the field
+// names, so deserialisation needs no renaming. But these same structs are
+// handed to the frontend, where everything else is camelCase — serialising as
+// snake_case there silently yields `undefined` for every multi-word field.
+#[serde(rename_all(serialize = "camelCase"))]
 pub struct VersionFile {
     pub hashes: FileHashes,
     pub url: String,
@@ -111,6 +181,61 @@ pub struct VersionFile {
 pub struct FileHashes {
     pub sha1: String,
     pub sha512: String,
+}
+
+#[cfg(test)]
+mod wire_format_tests {
+    use super::*;
+
+    /// The types cross two boundaries with opposite conventions, and getting
+    /// this wrong is invisible in Rust: the app compiles, the API parses, and
+    /// only the UI quietly shows blanks.
+    #[test]
+    fn responses_deserialize_from_snake_case_and_serialize_to_camel_case() {
+        let hit: SearchHit = serde_json::from_str(
+            r#"{"project_id":"AANobbMI","slug":"sodium","title":"Sodium",
+                "description":"d","icon_url":"https://cdn.modrinth.com/icon.png",
+                "client_side":"required","server_side":"unsupported"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(hit.project_id, "AANobbMI");
+        assert_eq!(hit.icon_url.as_deref(), Some("https://cdn.modrinth.com/icon.png"));
+
+        let json = serde_json::to_value(&hit).unwrap();
+        assert_eq!(json["projectId"], "AANobbMI");
+        assert!(json["iconUrl"].is_string());
+        assert_eq!(json["clientSide"], "required");
+        // The snake_case spellings must be gone, not merely duplicated.
+        assert!(json.get("project_id").is_none());
+        assert!(json.get("icon_url").is_none());
+    }
+
+    #[test]
+    fn search_results_expose_a_camel_case_total() {
+        let results: SearchResults =
+            serde_json::from_str(r#"{"hits":[],"offset":0,"limit":20,"total_hits":42}"#).unwrap();
+
+        let json = serde_json::to_value(&results).unwrap();
+        assert_eq!(json["totalHits"], 42);
+        assert!(json.get("total_hits").is_none());
+    }
+
+    #[test]
+    fn versions_expose_camel_case_fields() {
+        let version: Version = serde_json::from_str(
+            r#"{"id":"v","project_id":"p","name":"n","version_number":"1.0",
+                "version_type":"release","game_versions":["1.21.4"],
+                "loaders":["fabric"],"files":[]}"#,
+        )
+        .unwrap();
+
+        let json = serde_json::to_value(&version).unwrap();
+        assert_eq!(json["projectId"], "p");
+        assert_eq!(json["versionNumber"], "1.0");
+        assert_eq!(json["versionType"], "release");
+        assert_eq!(json["gameVersions"][0], "1.21.4");
+    }
 }
 
 impl Version {

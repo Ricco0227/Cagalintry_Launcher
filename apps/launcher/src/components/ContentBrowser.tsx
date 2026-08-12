@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { EmptyState } from "./Page";
+import { ProjectView } from "./ProjectView";
 
 const KINDS: { id: EntryKind; label: string }[] = [
   { id: "mod", label: "Mods" },
@@ -38,6 +39,7 @@ export function ContentBrowser({
   const [kind, setKind] = useState<EntryKind>("mod");
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
+  const [openProject, setOpenProject] = useState<string | null>(null);
 
   // Debounced so typing doesn't fire a request per keystroke and burn through
   // the rate limit.
@@ -73,6 +75,20 @@ export function ContentBrowser({
   const installedProjects = new Set(
     (installed.data ?? []).map((entry) => entry.source.projectId),
   );
+
+  // Opening a project replaces the results rather than layering over them, so
+  // the search state is preserved and Back returns to exactly where you were.
+  if (openProject) {
+    return (
+      <ProjectView
+        projectId={openProject}
+        kind={kind}
+        instance={instance}
+        onBack={() => setOpenProject(null)}
+        onError={onError}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -136,6 +152,7 @@ export function ContentBrowser({
               installed={installedProjects.has(hit.projectId)}
               installing={install.isPending && install.variables?.projectId === hit.projectId}
               onInstall={() => install.mutate(hit)}
+              onOpen={() => setOpenProject(hit.projectId)}
             />
           ))}
         </div>
@@ -149,28 +166,43 @@ function ResultRow({
   installed,
   installing,
   onInstall,
+  onOpen,
 }: {
   hit: SearchHit;
   installed: boolean;
   installing: boolean;
   onInstall: () => void;
+  onOpen: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-[12px] border border-border bg-surface p-3 transition-colors hover:border-border-strong">
-      {hit.iconUrl ? (
-        <img
-          src={hit.iconUrl}
-          alt=""
-          loading="lazy"
-          className="size-11 shrink-0 rounded-[9px] bg-surface-2 object-cover"
-        />
-      ) : (
-        <div className="grid size-11 shrink-0 place-items-center rounded-[9px] bg-surface-2 text-text-subtle">
-          <Package size={18} />
-        </div>
-      )}
+      {/* The icon and text open the project; only the button installs, so a
+          click to read about something never installs it by accident. */}
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open ${hit.title}`}
+        className="shrink-0 cursor-pointer"
+      >
+        {hit.iconUrl ? (
+          <img
+            src={hit.iconUrl}
+            alt=""
+            loading="lazy"
+            className="size-11 rounded-[9px] bg-surface-2 object-cover"
+          />
+        ) : (
+          <div className="grid size-11 place-items-center rounded-[9px] bg-surface-2 text-text-subtle">
+            <Package size={18} />
+          </div>
+        )}
+      </button>
 
-      <div className="min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="min-w-0 flex-1 cursor-pointer text-left"
+      >
         <div className="flex items-baseline gap-2">
           <h3 className="truncate text-[13.5px] font-semibold">{hit.title}</h3>
           {hit.author && (
@@ -183,7 +215,7 @@ function ResultRow({
         <p className="mt-1 text-[11.5px] text-text-subtle tabular-nums">
           {compactNumber(hit.downloads)} downloads
         </p>
-      </div>
+      </button>
 
       <button
         type="button"
