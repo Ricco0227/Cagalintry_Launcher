@@ -10,7 +10,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use cagalintry_mc::launch::{self, GameOutput, LaunchOptions, LaunchSession};
 use cagalintry_net::DownloadEvent;
-use cagalintry_proto::LoaderSpec;
+use cagalintry_mc::LoaderVersion;
+use cagalintry_proto::{LoaderKind, LoaderSpec};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter as _, State};
 use time::OffsetDateTime;
@@ -113,13 +114,28 @@ pub async fn list_minecraft_versions(
         .collect())
 }
 
+/// Loader builds available for a Minecraft version, newest first.
+#[tauri::command]
+pub async fn list_loader_versions(
+    state: State<'_, Arc<AppState>>,
+    kind: LoaderKind,
+    mc_version: String,
+) -> CommandResult<Vec<LoaderVersion>> {
+    Ok(state.loaders().list_versions(kind, &mc_version).await?)
+}
+
 #[tauri::command]
 pub async fn create_instance(
     state: State<'_, Arc<AppState>>,
     name: String,
     mc_version: String,
+    loader: Option<LoaderSpec>,
 ) -> CommandResult<InstanceView> {
-    let instance = Instance::new(name, mc_version, LoaderSpec::vanilla());
+    let mut instance = Instance::new(name, mc_version, loader.unwrap_or_else(LoaderSpec::vanilla));
+    // New instances start from the launcher-wide default; the instance's own
+    // setting takes over from then on.
+    instance.max_memory_mb = state.settings().await.default_max_memory_mb;
+
     state.instances.save(&instance).await?;
 
     let action = instance_action(&state, &instance).await;
@@ -237,9 +253,20 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
 
     emit_stage(app, id, "Resolving version");
 
+    // A loader profile is a version document like any other, so making it
+    // available first means everything below this line is loader-agnostic.
+    let version_id = state
+        .loaders()
+        .ensure_profile(
+            instance.loader.kind,
+            &instance.mc_version,
+            instance.loader.version.as_deref().unwrap_or_default(),
+        )
+        .await?;
+
     let installer = state.installer();
     let manifest = installer.version_manifest().await?;
-    let detail = installer.version_detail(&manifest, &instance.version_id()).await?;
+    let detail = installer.version_detail(&manifest, &version_id).await?;
     let resolved = installer.resolve(&detail)?;
 
     let plan = installer.plan(&resolved).await?;

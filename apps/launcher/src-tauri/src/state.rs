@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use cagalintry_mc::{DataDirs, Installer, JavaProvisioner};
+use cagalintry_mc::{DataDirs, Installer, JavaProvisioner, LoaderInstaller};
 use cagalintry_net::Downloader;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -73,6 +73,10 @@ impl AppState {
 
     pub fn installer(&self) -> Installer {
         Installer::new(self.downloader.clone(), self.dirs.clone())
+    }
+
+    pub fn loaders(&self) -> LoaderInstaller {
+        LoaderInstaller::new(self.downloader.clone(), self.dirs.clone())
     }
 
     pub fn java(&self) -> JavaProvisioner {
@@ -146,6 +150,7 @@ macro_rules! command_error_from {
 command_error_from! {
     crate::instance::InstanceError => "instance",
     cagalintry_mc::InstallError => "install",
+    cagalintry_mc::LoaderError => "loader",
     cagalintry_mc::JavaError => "java",
     cagalintry_mc::LaunchError => "launch",
     cagalintry_net::DownloadError => "download",

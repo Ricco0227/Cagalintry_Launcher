@@ -125,8 +125,17 @@ export const listInstances = () => invoke<InstanceView[]>("list_instances");
 export const listMinecraftVersions = () =>
   invoke<VersionSummary[]>("list_minecraft_versions");
 
-export const createInstance = (name: string, mcVersion: string) =>
-  invoke<InstanceView>("create_instance", { name, mcVersion });
+export interface LoaderVersion {
+  version: string;
+  /** Prereleases are still offered, just never preselected. */
+  stable: boolean;
+}
+
+export const listLoaderVersions = (kind: LoaderKind, mcVersion: string) =>
+  invoke<LoaderVersion[]>("list_loader_versions", { kind, mcVersion });
+
+export const createInstance = (name: string, mcVersion: string, loader: LoaderSpec) =>
+  invoke<InstanceView>("create_instance", { name, mcVersion, loader });
 
 export const getInstance = (id: string) => invoke<InstanceView>("get_instance", { id });
 

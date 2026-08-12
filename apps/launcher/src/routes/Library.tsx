@@ -9,9 +9,11 @@ import {
   isCommandError,
   launchInstance,
   listInstances,
+  listLoaderVersions,
   listMinecraftVersions,
   onGameExit,
   type InstanceView,
+  type LoaderKind,
 } from "@/lib/api";
 import { useLauncherStore } from "@/lib/store";
 import { cn } from "@/lib/cn";
@@ -25,6 +27,18 @@ interface Notice {
   tone: "error" | "info";
   message: string;
 }
+
+const LOADER_KINDS: LoaderKind[] = ["vanilla", "fabric", "quilt", "neoforge"];
+
+const LOADER_LABELS: Record<LoaderKind, string> = {
+  vanilla: "Vanilla",
+  fabric: "Fabric",
+  quilt: "Quilt",
+  neoforge: "NeoForge",
+};
+
+const selectClass =
+  "h-9 w-full rounded-[10px] border border-border bg-surface px-2.5 text-[13px] outline-none focus:border-accent";
 
 export function Library() {
   const queryClient = useQueryClient();
@@ -184,6 +198,8 @@ function CreateInstanceDialog({
 }) {
   const [name, setName] = useState("");
   const [version, setVersion] = useState("");
+  const [loaderKind, setLoaderKind] = useState<LoaderKind>("vanilla");
+  const [loaderVersion, setLoaderVersion] = useState("");
 
   // Only fetched once the dialog is opened — the version manifest is a network
   // request and the Library shouldn't pay for it on every visit.
@@ -197,22 +213,46 @@ function CreateInstanceDialog({
   const latest = versions.data?.[0]?.id ?? "";
   const selected = version || latest;
 
-  const suggestedName = useMemo(
-    () => (selected ? `Minecraft ${selected}` : ""),
-    [selected],
-  );
+  const loaders = useQuery({
+    queryKey: ["loader-versions", loaderKind, selected],
+    queryFn: () => listLoaderVersions(loaderKind, selected),
+    enabled: open && loaderKind !== "vanilla" && selected !== "",
+    staleTime: 60 * 60 * 1000,
+  });
+
+  // Default to the newest stable build, falling back to the newest of any kind
+  // when a version only has prereleases — which is normal soon after a
+  // Minecraft release.
+  const defaultLoaderVersion =
+    loaders.data?.find((entry) => entry.stable)?.version ?? loaders.data?.[0]?.version ?? "";
+  const selectedLoaderVersion = loaderVersion || defaultLoaderVersion;
+
+  const suggestedName = useMemo(() => {
+    if (!selected) return "";
+    return loaderKind === "vanilla"
+      ? `Minecraft ${selected}`
+      : `${LOADER_LABELS[loaderKind]} ${selected}`;
+  }, [selected, loaderKind]);
 
   const create = useMutation({
-    mutationFn: () => createInstance(name.trim() || suggestedName, selected),
+    mutationFn: () =>
+      createInstance(name.trim() || suggestedName, selected, {
+        kind: loaderKind,
+        ...(loaderKind === "vanilla" ? {} : { version: selectedLoaderVersion }),
+      }),
     onSuccess: () => {
       setName("");
       setVersion("");
+      setLoaderKind("vanilla");
+      setLoaderVersion("");
       onCreated();
     },
     onError: (err) => onError(errorMessage(err)),
   });
 
-  const canCreate = selected !== "" && !create.isPending;
+  // A modded instance without a loader build would silently launch vanilla.
+  const loaderReady = loaderKind === "vanilla" || selectedLoaderVersion !== "";
+  const canCreate = selected !== "" && loaderReady && !create.isPending;
 
   return (
     <Modal
@@ -257,8 +297,13 @@ function CreateInstanceDialog({
           ) : (
             <select
               value={selected}
-              onChange={(event) => setVersion(event.target.value)}
-              className="h-9 w-full rounded-[10px] border border-border bg-surface px-2.5 text-[13px] outline-none focus:border-accent"
+              onChange={(event) => {
+                setVersion(event.target.value);
+                // Loader builds are per Minecraft version; keeping the old
+                // choice would pin a build that doesn't exist for the new one.
+                setLoaderVersion("");
+              }}
+              className={selectClass}
             >
               {versions.data?.map((entry) => (
                 <option key={entry.id} value={entry.id}>
@@ -268,6 +313,54 @@ function CreateInstanceDialog({
             </select>
           )}
         </Field>
+
+        <Field label="Mod loader">
+          <div className="grid grid-cols-4 gap-1.5">
+            {LOADER_KINDS.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => {
+                  setLoaderKind(kind);
+                  setLoaderVersion("");
+                }}
+                className={cn(
+                  "rounded-[9px] border px-2 py-2 text-[12.5px] font-medium transition-colors",
+                  loaderKind === kind
+                    ? "border-accent bg-accent-soft text-accent"
+                    : "border-border bg-surface text-text-muted hover:border-border-strong hover:text-text",
+                )}
+              >
+                {LOADER_LABELS[kind]}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        {loaderKind !== "vanilla" && (
+          <Field label={`${LOADER_LABELS[loaderKind]} version`}>
+            {loaders.isPending ? (
+              <div className="flex h-9 items-center rounded-[10px] border border-border bg-surface px-3 text-[13px] text-text-subtle">
+                Loading builds…
+              </div>
+            ) : loaders.isError ? (
+              <p className="text-[12.5px] text-danger">{errorMessage(loaders.error)}</p>
+            ) : (
+              <select
+                value={selectedLoaderVersion}
+                onChange={(event) => setLoaderVersion(event.target.value)}
+                className={selectClass}
+              >
+                {loaders.data?.map((entry) => (
+                  <option key={entry.version} value={entry.version}>
+                    {entry.version}
+                    {entry.stable ? "" : "  (prerelease)"}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        )}
       </form>
     </Modal>
   );

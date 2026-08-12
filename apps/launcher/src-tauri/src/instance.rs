@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use cagalintry_mc::DataDirs;
-use cagalintry_proto::{LoaderKind, LoaderSpec};
+use cagalintry_proto::LoaderSpec;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -95,18 +95,6 @@ impl Instance {
         }
     }
 
-    /// The version id to resolve and launch.
-    ///
-    /// Vanilla instances launch the Minecraft version directly; a modded one
-    /// launches the loader's profile, which inherits from it.
-    pub fn version_id(&self) -> String {
-        match (self.loader.kind, &self.loader.version) {
-            (LoaderKind::Vanilla, _) | (_, None) => self.mc_version.clone(),
-            (LoaderKind::Fabric, Some(v)) => format!("fabric-loader-{v}-{}", self.mc_version),
-            (LoaderKind::Quilt, Some(v)) => format!("quilt-loader-{v}-{}", self.mc_version),
-            (LoaderKind::NeoForge, Some(v)) => format!("neoforge-{v}"),
-        }
-    }
 }
 
 /// Reads and writes instances on disk.
@@ -210,39 +198,6 @@ mod tests {
         let root = std::env::temp_dir().join("cagalintry-instance-tests").join(name);
         std::fs::create_dir_all(&root).unwrap();
         (InstanceStore::new(DataDirs::with_root(&root)), root)
-    }
-
-    #[test]
-    fn a_vanilla_instance_launches_the_minecraft_version_directly() {
-        let instance = Instance::new("Vanilla", "1.21.4", LoaderSpec::vanilla());
-        assert_eq!(instance.version_id(), "1.21.4");
-    }
-
-    #[test]
-    fn a_modded_instance_launches_its_loader_profile() {
-        let fabric = Instance::new(
-            "Modded",
-            "1.21.4",
-            LoaderSpec { kind: LoaderKind::Fabric, version: Some("0.16.10".into()) },
-        );
-        assert_eq!(fabric.version_id(), "fabric-loader-0.16.10-1.21.4");
-
-        let quilt = Instance::new(
-            "Q",
-            "1.21.4",
-            LoaderSpec { kind: LoaderKind::Quilt, version: Some("0.27.0".into()) },
-        );
-        assert_eq!(quilt.version_id(), "quilt-loader-0.27.0-1.21.4");
-    }
-
-    #[test]
-    fn a_loader_without_a_pinned_version_falls_back_to_vanilla() {
-        let instance = Instance::new(
-            "Unpinned",
-            "1.21.4",
-            LoaderSpec { kind: LoaderKind::Fabric, version: None },
-        );
-        assert_eq!(instance.version_id(), "1.21.4");
     }
 
     #[tokio::test]

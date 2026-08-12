@@ -36,6 +36,7 @@ fn main() {
             commands::list_instances,
             commands::get_instance,
             commands::list_minecraft_versions,
+            commands::list_loader_versions,
             commands::create_instance,
             commands::update_instance,
             commands::delete_instance,
