@@ -449,7 +449,7 @@ mod tests {
         let all: AllRuntimes = serde_json::from_str(json).unwrap();
         assert_eq!(all["windows-arm64"]["java-runtime-delta"].len(), 1);
         // An empty list is how Mojang says "not published for this platform".
-        assert!(all["windows-arm64"]["jre-legacy"].first().is_none());
+        assert!(all["windows-arm64"]["jre-legacy"].is_empty());
     }
 
     #[test]

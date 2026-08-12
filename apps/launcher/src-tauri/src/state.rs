@@ -1,6 +1,7 @@
 //! Process-wide state shared by every command.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use cagalintry_mc::{DataDirs, Installer, JavaProvisioner};
@@ -9,11 +10,16 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::instance::InstanceStore;
+use crate::settings::{Settings, SettingsPatch};
 
 pub struct AppState {
     pub dirs: DataDirs,
     pub downloader: Downloader,
     pub instances: InstanceStore,
+
+    /// Cached so the UI can read settings without touching the disk on every
+    /// render; the file stays the source of truth across restarts.
+    settings: Mutex<Settings>,
 
     /// Instances with an install or update in flight. The primary button reads
     /// this to render as busy, and command handlers read it to refuse starting
@@ -26,16 +32,43 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> anyhow::Result<Self> {
+    pub async fn new() -> anyhow::Result<Self> {
         let dirs = DataDirs::discover()?;
-        let downloader = Downloader::new()?;
+        let settings = Settings::load(&dirs).await;
+        // Concurrency comes from settings, so the downloader is built after
+        // them rather than reconfigured later.
+        let downloader = Downloader::with_concurrency(settings.download_concurrency)?;
+
         Ok(Self {
             instances: InstanceStore::new(dirs.clone()),
             dirs,
             downloader,
+            settings: Mutex::new(settings),
             busy: Mutex::new(HashSet::new()),
             running: Mutex::new(HashMap::new()),
         })
+    }
+
+    pub async fn settings(&self) -> Settings {
+        self.settings.lock().await.clone()
+    }
+
+    /// Apply and persist. Concurrency changes take effect on the next restart,
+    /// since the running downloader's permit count is fixed at construction.
+    pub async fn update_settings(&self, patch: SettingsPatch) -> anyhow::Result<Settings> {
+        let mut settings = self.settings.lock().await;
+        settings.apply(patch);
+        settings.save(&self.dirs).await?;
+        Ok(settings.clone())
+    }
+
+    /// The Java override to use for an instance: the instance's own setting
+    /// first, then the global one, then automatic selection.
+    pub async fn java_override(&self, instance: Option<&std::path::Path>) -> Option<PathBuf> {
+        match instance {
+            Some(path) => Some(path.to_path_buf()),
+            None => self.settings.lock().await.java_path.clone(),
+        }
     }
 
     pub fn installer(&self) -> Installer {

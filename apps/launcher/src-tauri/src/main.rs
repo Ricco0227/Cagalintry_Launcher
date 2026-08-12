@@ -5,6 +5,7 @@
 mod commands;
 mod instance;
 mod primary_action;
+mod settings;
 mod state;
 
 use std::sync::Arc;
@@ -33,17 +34,22 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::app_version,
             commands::list_instances,
+            commands::get_instance,
             commands::list_minecraft_versions,
             commands::create_instance,
+            commands::update_instance,
             commands::delete_instance,
             commands::open_instance_folder,
             commands::launch_instance,
             commands::kill_instance,
+            commands::get_settings,
+            commands::update_settings,
+            commands::data_directory,
         ])
         .setup(|app| {
             // Behind an Arc so background tasks — the process watcher, the
             // progress aggregator — can hold it past the borrow of a command.
-            let state = Arc::new(state::AppState::new()?);
+            let state = Arc::new(tauri::async_runtime::block_on(state::AppState::new())?);
             tracing::info!(root = %state.dirs.root().display(), "data directory");
             app.manage(state);
 

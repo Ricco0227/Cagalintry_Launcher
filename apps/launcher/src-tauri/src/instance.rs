@@ -149,7 +149,8 @@ impl InstanceStore {
             }
         }
 
-        instances.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        // Newest first: the instance you just made should be the one you see.
+        instances.sort_by_key(|instance| std::cmp::Reverse(instance.created_at));
         Ok(instances)
     }
 

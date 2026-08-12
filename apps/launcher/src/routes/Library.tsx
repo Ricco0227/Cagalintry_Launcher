@@ -11,10 +11,9 @@ import {
   listInstances,
   listMinecraftVersions,
   onGameExit,
-  onInstallProgress,
-  type InstallProgress,
   type InstanceView,
 } from "@/lib/api";
+import { useLauncherStore } from "@/lib/store";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/Button";
 import { EmptyState, Page } from "@/components/Page";
@@ -31,32 +30,26 @@ export function Library() {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [progress, setProgress] = useState<Record<string, InstallProgress>>({});
 
   const setError = (message: string) => setNotice({ tone: "error", message });
 
   const instances = useQuery({ queryKey: ["instances"], queryFn: listInstances });
 
-  // Progress and exit both change what the primary button should say, so both
-  // invalidate the instance list rather than the UI trying to guess.
+  // Progress arrives on the shared store, populated by the app-level listener
+  // so it keeps flowing while this page is not mounted.
+  const progress = useLauncherStore((state) => state.progress);
+
+  // A crash is worth surfacing here; the app-level listener handles refreshing.
   useEffect(() => {
-    const unlisten = [
-      onInstallProgress((update) =>
-        setProgress((current) => ({ ...current, [update.instanceId]: update })),
-      ),
-      onGameExit((exit) => {
-        void queryClient.invalidateQueries({ queryKey: ["instances"] });
-        if (exit.crashed) {
-          setError(
-            `The game exited unexpectedly${exit.code === null ? "" : ` with code ${exit.code}`}.`,
-          );
-        }
-      }),
-    ];
-    return () => {
-      for (const pending of unlisten) void pending.then((off) => off());
-    };
-  }, [queryClient]);
+    const subscription = onGameExit((exit) => {
+      if (exit.crashed) {
+        setError(
+          `The game exited unexpectedly${exit.code === null ? "" : ` with code ${exit.code}`}. Its output is on the instance's Logs tab.`,
+        );
+      }
+    });
+    return () => void subscription.then((off) => off());
+  }, []);
 
   const launch = useMutation({
     mutationFn: launchInstance,

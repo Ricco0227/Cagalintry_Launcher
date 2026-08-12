@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::instance::Instance;
 use crate::primary_action::{InstanceStatus, PrimaryAction, resolve};
+use crate::settings::{Settings, SettingsPatch};
 use crate::state::{AppState, CommandError, CommandResult};
 
 /// Progress is emitted on a timer rather than per chunk: a full install is
@@ -126,6 +127,72 @@ pub async fn create_instance(
 }
 
 #[tauri::command]
+pub async fn get_instance(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<InstanceView> {
+    let instance = state.instances.get(id).await?;
+    let action = instance_action(&state, &instance).await;
+    Ok(InstanceView { instance, action })
+}
+
+/// Per-instance settings. Every field optional — the frontend sends only what
+/// changed, so two panels editing different fields can't clobber each other.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstancePatch {
+    pub name: Option<String>,
+    pub max_memory_mb: Option<u32>,
+    pub java_path: Option<String>,
+    pub extra_jvm_args: Option<Vec<String>>,
+}
+
+#[tauri::command]
+pub async fn update_instance(
+    state: State<'_, Arc<AppState>>,
+    id: Uuid,
+    patch: InstancePatch,
+) -> CommandResult<InstanceView> {
+    let mut instance = state.instances.get(id).await?;
+
+    if let Some(name) = patch.name {
+        instance.name = name;
+    }
+    if let Some(memory) = patch.max_memory_mb {
+        // Below 512 MB the game cannot start; the upper bound just stops a
+        // stray keystroke asking for a terabyte of heap.
+        instance.max_memory_mb = memory.clamp(512, 65536);
+    }
+    if let Some(java_path) = patch.java_path {
+        // An emptied text field means "use the default", not "use ''".
+        instance.java_path = (!java_path.trim().is_empty()).then(|| java_path.into());
+    }
+    if let Some(args) = patch.extra_jvm_args {
+        instance.extra_jvm_args = args.into_iter().filter(|a| !a.trim().is_empty()).collect();
+    }
+
+    state.instances.save(&instance).await?;
+    let action = instance_action(&state, &instance).await;
+    Ok(InstanceView { instance, action })
+}
+
+#[tauri::command]
+pub async fn get_settings(state: State<'_, Arc<AppState>>) -> CommandResult<Settings> {
+    Ok(state.settings().await)
+}
+
+#[tauri::command]
+pub async fn update_settings(
+    state: State<'_, Arc<AppState>>,
+    patch: SettingsPatch,
+) -> CommandResult<Settings> {
+    Ok(state.update_settings(patch).await?)
+}
+
+/// Absolute path of the launcher's data directory, for the Settings page.
+#[tauri::command]
+pub fn data_directory(state: State<'_, Arc<AppState>>) -> String {
+    state.dirs.root().display().to_string()
+}
+
+#[tauri::command]
 pub async fn delete_instance(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<()> {
     if state.is_running(id).await {
         return Err(CommandError::new(
@@ -182,12 +249,13 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
     installer.install(&resolved, Some(&progress)).await?;
 
     emit_stage(app, id, "Preparing Java");
+    let java_override = state.java_override(instance.java_path.as_deref()).await;
     let java = state
         .java()
         .provide(
             resolved.java_component(),
             resolved.java_major_version(),
-            instance.java_path.as_deref(),
+            java_override.as_deref(),
             Some(&progress),
         )
         .await?;

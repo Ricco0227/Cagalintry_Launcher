@@ -75,6 +75,33 @@ export interface GameExit {
   crashed: boolean;
 }
 
+export type Theme = "system" | "light" | "dark";
+
+export interface Settings {
+  theme: Theme;
+  downloadConcurrency: number;
+  defaultMaxMemoryMb: number;
+  javaPath?: string;
+}
+
+/**
+ * Only the fields being changed are sent. `javaPath: null` clears the override,
+ * while omitting it leaves the current value alone — the two are different.
+ */
+export interface SettingsPatch {
+  theme?: Theme;
+  downloadConcurrency?: number;
+  defaultMaxMemoryMb?: number;
+  javaPath?: string | null;
+}
+
+export interface InstancePatch {
+  name?: string;
+  maxMemoryMb?: number;
+  javaPath?: string;
+  extraJvmArgs?: string[];
+}
+
 /** Errors carry a stable code so the UI can branch without matching prose. */
 export interface CommandError {
   code: string;
@@ -101,7 +128,19 @@ export const listMinecraftVersions = () =>
 export const createInstance = (name: string, mcVersion: string) =>
   invoke<InstanceView>("create_instance", { name, mcVersion });
 
+export const getInstance = (id: string) => invoke<InstanceView>("get_instance", { id });
+
+export const updateInstance = (id: string, patch: InstancePatch) =>
+  invoke<InstanceView>("update_instance", { id, patch });
+
 export const deleteInstance = (id: string) => invoke<void>("delete_instance", { id });
+
+export const getSettings = () => invoke<Settings>("get_settings");
+
+export const updateSettings = (patch: SettingsPatch) =>
+  invoke<Settings>("update_settings", { patch });
+
+export const dataDirectory = () => invoke<string>("data_directory");
 
 export const launchInstance = (id: string) => invoke<void>("launch_instance", { id });
 
