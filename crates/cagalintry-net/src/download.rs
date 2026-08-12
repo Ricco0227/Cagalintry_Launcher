@@ -6,7 +6,7 @@
 //!    and a corrupted one are indistinguishable on disk, and the symptom
 //!    surfaces much later as an unexplained crash on launch.
 //! 2. **A file that is already correct is never fetched again.** This is what
-//!    makes a second instance on the same version nearly free, and what makes a
+//!    makes a second modpack on the same version nearly free, and what makes a
 //!    failed install cheap to retry.
 //! 3. **A partial file never appears at its destination.** Everything is
 //!    written to a temporary name and renamed into place only after it

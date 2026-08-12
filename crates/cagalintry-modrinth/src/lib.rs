@@ -34,6 +34,54 @@ pub enum ModrinthError {
     Url(String),
 }
 
+/// How search results are ordered. Mirrors Modrinth's `index` parameter.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SearchSort {
+    #[default]
+    Relevance,
+    Downloads,
+    Follows,
+    Newest,
+    Updated,
+}
+
+impl SearchSort {
+    pub const ALL: [SearchSort; 5] = [
+        Self::Relevance,
+        Self::Downloads,
+        Self::Follows,
+        Self::Newest,
+        Self::Updated,
+    ];
+
+    /// The `index` value to send.
+    ///
+    /// Relevance with nothing to be relevant *to* ranks arbitrarily, so an
+    /// untouched browse — no search text typed — sorts by downloads instead.
+    /// That keeps the default landing view showing what people actually use.
+    fn index_for(self, has_text: bool) -> &'static str {
+        match self {
+            Self::Relevance if !has_text => "downloads",
+            Self::Relevance => "relevance",
+            Self::Downloads => "downloads",
+            Self::Follows => "follows",
+            Self::Newest => "newest",
+            Self::Updated => "updated",
+        }
+    }
+
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::Relevance => "Relevance",
+            Self::Downloads => "Downloads",
+            Self::Follows => "Followers",
+            Self::Newest => "Newest",
+            Self::Updated => "Recently updated",
+        }
+    }
+}
+
 /// What to search for.
 #[derive(Debug, Clone)]
 pub struct SearchQuery {
@@ -43,6 +91,7 @@ pub struct SearchQuery {
     pub mc_version: Option<String>,
     /// Only meaningful for mods; resource and shader packs are loader-agnostic.
     pub loader: Option<LoaderKind>,
+    pub sort: SearchSort,
     pub offset: u32,
     pub limit: u32,
 }
@@ -54,6 +103,7 @@ impl SearchQuery {
             kind,
             mc_version: None,
             loader: None,
+            sort: SearchSort::default(),
             offset: 0,
             limit: 20,
         }
@@ -84,7 +134,7 @@ impl SearchQuery {
     }
 }
 
-/// Narrows a project's version list to what an instance can actually use.
+/// Narrows a project's version list to what a modpack can actually use.
 #[derive(Debug, Clone, Default)]
 pub struct VersionFilter {
     pub mc_version: Option<String>,
@@ -116,11 +166,9 @@ impl ModrinthClient {
             pairs.append_pair("facets", &query.facets());
             pairs.append_pair("limit", &query.limit.clamp(1, 100).to_string());
             pairs.append_pair("offset", &query.offset.to_string());
-            // Downloads rather than relevance when there's no search text, so
-            // an empty Discover page shows what people actually use.
             pairs.append_pair(
                 "index",
-                if query.text.trim().is_empty() { "downloads" } else { "relevance" },
+                query.sort.index_for(!query.text.trim().is_empty()),
             );
         }
 
@@ -191,7 +239,7 @@ impl ModrinthClient {
         }
     }
 
-    /// The newest version of a project an instance can use.
+    /// The newest version of a project a modpack can use.
     ///
     /// Prefers a full release, falling back to a beta or alpha when that is all
     /// that exists for the version — normal shortly after a Minecraft release.
@@ -234,8 +282,7 @@ mod tests {
             kind: EntryKind::Mod,
             mc_version: Some("1.21.4".into()),
             loader: Some(LoaderKind::Fabric),
-            offset: 0,
-            limit: 20,
+            ..SearchQuery::new(EntryKind::Mod)
         };
 
         assert_eq!(
@@ -261,6 +308,32 @@ mod tests {
     fn resource_pack_searches_use_modrinths_own_project_type() {
         let query = SearchQuery::new(EntryKind::ResourcePack);
         assert_eq!(query.facets(), r#"[["project_type:resourcepack"]]"#);
+    }
+
+    #[test]
+    fn relevance_falls_back_to_downloads_without_search_text() {
+        // Ranking by relevance to an empty query is arbitrary, so the default
+        // browse view has to sort by something meaningful.
+        assert_eq!(SearchSort::Relevance.index_for(false), "downloads");
+        assert_eq!(SearchSort::Relevance.index_for(true), "relevance");
+    }
+
+    #[test]
+    fn an_explicit_sort_is_honoured_with_or_without_text() {
+        for has_text in [true, false] {
+            assert_eq!(SearchSort::Newest.index_for(has_text), "newest");
+            assert_eq!(SearchSort::Updated.index_for(has_text), "updated");
+            assert_eq!(SearchSort::Follows.index_for(has_text), "follows");
+            assert_eq!(SearchSort::Downloads.index_for(has_text), "downloads");
+        }
+    }
+
+    #[test]
+    fn sort_serialises_as_the_camel_case_the_frontend_sends() {
+        assert_eq!(
+            serde_json::to_value(SearchSort::Updated).unwrap(),
+            serde_json::json!("updated")
+        );
     }
 
     #[test]
@@ -297,8 +370,8 @@ mod tests {
                 kind: EntryKind::Mod,
                 mc_version: Some("1.21.4".into()),
                 loader: Some(LoaderKind::Fabric),
-                offset: 0,
                 limit: 5,
+                ..SearchQuery::new(EntryKind::Mod)
             })
             .await
             .expect("search failed");

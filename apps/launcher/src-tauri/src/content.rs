@@ -1,7 +1,7 @@
-//! Mods, resource packs and shader packs installed in an instance.
+//! Mods, resource packs and shader packs installed in a pack.
 //!
 //! The record is a list of [`PackEntry`] — deliberately the same type a synced
-//! pack is made of. An instance's installed content *is* a manifest, so
+//! pack is made of. A modpack's installed content *is* a manifest, so
 //! publishing it later means uploading what is already there rather than
 //! deriving it, and a pack update reconciles against the same structure it
 //! would have produced itself.
@@ -47,20 +47,20 @@ impl ContentStore {
         Self { dirs }
     }
 
-    fn record_path(&self, instance_id: Uuid) -> PathBuf {
+    fn record_path(&self, pack_id: Uuid) -> PathBuf {
         self.dirs
-            .instance(&instance_id.to_string())
+            .pack(&pack_id.to_string())
             .root()
             .join(".cagalintry")
             .join("content.json")
     }
 
-    fn game_dir(&self, instance_id: Uuid) -> PathBuf {
-        self.dirs.instance(&instance_id.to_string()).game_dir()
+    fn game_dir(&self, pack_id: Uuid) -> PathBuf {
+        self.dirs.pack(&pack_id.to_string()).game_dir()
     }
 
-    pub async fn list(&self, instance_id: Uuid) -> Result<Vec<PackEntry>, ContentError> {
-        let path = self.record_path(instance_id);
+    pub async fn list(&self, pack_id: Uuid) -> Result<Vec<PackEntry>, ContentError> {
+        let path = self.record_path(pack_id);
         match tokio::fs::read(&path).await {
             Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
             // Nothing installed yet.
@@ -68,8 +68,8 @@ impl ContentStore {
         }
     }
 
-    async fn save(&self, instance_id: Uuid, entries: &[PackEntry]) -> Result<(), ContentError> {
-        let path = self.record_path(instance_id);
+    async fn save(&self, pack_id: Uuid, entries: &[PackEntry]) -> Result<(), ContentError> {
+        let path = self.record_path(pack_id);
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -82,20 +82,20 @@ impl ContentStore {
             .map_err(|source| ContentError::Io { path: path.display().to_string(), source })
     }
 
-    /// Download an entry into the instance and record it.
+    /// Download an entry into the pack and record it.
     ///
     /// Replacing an entry for the same project removes the old file first, so
     /// updating a mod cannot leave two versions of it in `mods/` — which
     /// crashes the game on launch.
     pub async fn install(
         &self,
-        instance_id: Uuid,
+        pack_id: Uuid,
         entry: PackEntry,
         downloader: &Downloader,
     ) -> Result<(), ContentError> {
         entry.validate()?;
 
-        let game_dir = self.game_dir(instance_id);
+        let game_dir = self.game_dir(pack_id);
         let destination = game_dir.join(&entry.path);
 
         let mut spec = DownloadSpec::new(
@@ -107,7 +107,7 @@ impl ContentStore {
 
         downloader.download(&spec, None).await?;
 
-        let mut entries = self.list(instance_id).await?;
+        let mut entries = self.list(pack_id).await?;
         let identity = entry.identity();
 
         // Remove any previous file for this project before recording the new
@@ -120,11 +120,11 @@ impl ContentStore {
         entries.retain(|e| e.identity() != identity);
         entries.push(entry);
 
-        self.save(instance_id, &entries).await
+        self.save(pack_id, &entries).await
     }
 
-    pub async fn remove(&self, instance_id: Uuid, path: &str) -> Result<(), ContentError> {
-        let mut entries = self.list(instance_id).await?;
+    pub async fn remove(&self, pack_id: Uuid, path: &str) -> Result<(), ContentError> {
+        let mut entries = self.list(pack_id).await?;
         let before = entries.len();
         entries.retain(|entry| entry.path != path);
 
@@ -135,9 +135,9 @@ impl ContentStore {
         // Validated on the way in, but this builds a filesystem path from
         // stored data, so it is checked again rather than trusted.
         cagalintry_proto::validate::validate_relative_path(path)?;
-        remove_file_variants(&self.game_dir(instance_id), path).await;
+        remove_file_variants(&self.game_dir(pack_id), path).await;
 
-        self.save(instance_id, &entries).await
+        self.save(pack_id, &entries).await
     }
 
     /// Turn content on or off without deleting it.
@@ -146,19 +146,19 @@ impl ContentStore {
     /// out of the way and renamed back when re-enabled.
     pub async fn set_enabled(
         &self,
-        instance_id: Uuid,
+        pack_id: Uuid,
         path: &str,
         enabled: bool,
     ) -> Result<(), ContentError> {
         cagalintry_proto::validate::validate_relative_path(path)?;
 
-        let mut entries = self.list(instance_id).await?;
+        let mut entries = self.list(pack_id).await?;
         let entry = entries
             .iter_mut()
             .find(|entry| entry.path == path)
             .ok_or_else(|| ContentError::NotFound(path.to_string()))?;
 
-        let game_dir = self.game_dir(instance_id);
+        let game_dir = self.game_dir(pack_id);
         let active = game_dir.join(path);
         let disabled = with_disabled_suffix(&active);
 
@@ -171,7 +171,7 @@ impl ContentStore {
         }
 
         entry.enabled = enabled;
-        self.save(instance_id, &entries).await
+        self.save(pack_id, &entries).await
     }
 
 }
@@ -221,14 +221,14 @@ mod tests {
     }
 
     /// Put a file on disk as if it had been downloaded.
-    async fn place(dirs: &DataDirs, instance: Uuid, relative: &str) {
-        let path = dirs.instance(&instance.to_string()).game_dir().join(relative);
+    async fn place(dirs: &DataDirs, pack: Uuid, relative: &str) {
+        let path = dirs.pack(&pack.to_string()).game_dir().join(relative);
         tokio::fs::create_dir_all(path.parent().unwrap()).await.unwrap();
         tokio::fs::write(&path, b"jar").await.unwrap();
     }
 
     #[tokio::test]
-    async fn an_empty_instance_has_no_content() {
+    async fn an_empty_pack_has_no_content() {
         let (store, _, root) = store("empty");
         assert!(store.list(Uuid::new_v4()).await.unwrap().is_empty());
         let _ = tokio::fs::remove_dir_all(root).await;
@@ -237,20 +237,20 @@ mod tests {
     #[tokio::test]
     async fn content_is_recorded_and_can_be_removed() {
         let (store, dirs, root) = store("remove");
-        let instance = Uuid::new_v4();
+        let pack = Uuid::new_v4();
 
         store
-            .save(instance, &[entry("sodium", "sodium-0.6.0.jar", "v1")])
+            .save(pack, &[entry("sodium", "sodium-0.6.0.jar", "v1")])
             .await
             .unwrap();
-        place(&dirs, instance, "mods/sodium-0.6.0.jar").await;
+        place(&dirs, pack, "mods/sodium-0.6.0.jar").await;
 
-        assert_eq!(store.list(instance).await.unwrap().len(), 1);
+        assert_eq!(store.list(pack).await.unwrap().len(), 1);
 
-        store.remove(instance, "mods/sodium-0.6.0.jar").await.unwrap();
-        assert!(store.list(instance).await.unwrap().is_empty());
+        store.remove(pack, "mods/sodium-0.6.0.jar").await.unwrap();
+        assert!(store.list(pack).await.unwrap().is_empty());
 
-        let path = dirs.instance(&instance.to_string()).game_dir().join("mods/sodium-0.6.0.jar");
+        let path = dirs.pack(&pack.to_string()).game_dir().join("mods/sodium-0.6.0.jar");
         assert!(tokio::fs::metadata(&path).await.is_err(), "file should be gone");
 
         let _ = tokio::fs::remove_dir_all(root).await;
@@ -267,22 +267,22 @@ mod tests {
     #[tokio::test]
     async fn disabling_renames_the_file_rather_than_deleting_it() {
         let (store, dirs, root) = store("disable");
-        let instance = Uuid::new_v4();
-        let game_dir = dirs.instance(&instance.to_string()).game_dir();
+        let pack = Uuid::new_v4();
+        let game_dir = dirs.pack(&pack.to_string()).game_dir();
 
-        store.save(instance, &[entry("sodium", "sodium.jar", "v1")]).await.unwrap();
-        place(&dirs, instance, "mods/sodium.jar").await;
+        store.save(pack, &[entry("sodium", "sodium.jar", "v1")]).await.unwrap();
+        place(&dirs, pack, "mods/sodium.jar").await;
 
-        store.set_enabled(instance, "mods/sodium.jar", false).await.unwrap();
+        store.set_enabled(pack, "mods/sodium.jar", false).await.unwrap();
 
         assert!(tokio::fs::metadata(game_dir.join("mods/sodium.jar")).await.is_err());
         assert!(tokio::fs::metadata(game_dir.join("mods/sodium.jar.disabled")).await.is_ok());
-        assert!(!store.list(instance).await.unwrap()[0].enabled);
+        assert!(!store.list(pack).await.unwrap()[0].enabled);
 
         // And back again, with the file intact.
-        store.set_enabled(instance, "mods/sodium.jar", true).await.unwrap();
+        store.set_enabled(pack, "mods/sodium.jar", true).await.unwrap();
         assert!(tokio::fs::metadata(game_dir.join("mods/sodium.jar")).await.is_ok());
-        assert!(store.list(instance).await.unwrap()[0].enabled);
+        assert!(store.list(pack).await.unwrap()[0].enabled);
 
         let _ = tokio::fs::remove_dir_all(root).await;
     }
@@ -290,14 +290,14 @@ mod tests {
     #[tokio::test]
     async fn removing_a_disabled_mod_deletes_the_renamed_file_too() {
         let (store, dirs, root) = store("remove-disabled");
-        let instance = Uuid::new_v4();
-        let game_dir = dirs.instance(&instance.to_string()).game_dir();
+        let pack = Uuid::new_v4();
+        let game_dir = dirs.pack(&pack.to_string()).game_dir();
 
-        store.save(instance, &[entry("sodium", "sodium.jar", "v1")]).await.unwrap();
-        place(&dirs, instance, "mods/sodium.jar").await;
-        store.set_enabled(instance, "mods/sodium.jar", false).await.unwrap();
+        store.save(pack, &[entry("sodium", "sodium.jar", "v1")]).await.unwrap();
+        place(&dirs, pack, "mods/sodium.jar").await;
+        store.set_enabled(pack, "mods/sodium.jar", false).await.unwrap();
 
-        store.remove(instance, "mods/sodium.jar").await.unwrap();
+        store.remove(pack, "mods/sodium.jar").await.unwrap();
         assert!(tokio::fs::metadata(game_dir.join("mods/sodium.jar.disabled")).await.is_err());
 
         let _ = tokio::fs::remove_dir_all(root).await;
@@ -308,14 +308,14 @@ mod tests {
         // Two versions of one mod in `mods/` crashes the game on launch, so an
         // update must remove the old jar rather than sit alongside it.
         let (store, dirs, root) = store("replace");
-        let instance = Uuid::new_v4();
-        let game_dir = dirs.instance(&instance.to_string()).game_dir();
+        let pack = Uuid::new_v4();
+        let game_dir = dirs.pack(&pack.to_string()).game_dir();
 
-        store.save(instance, &[entry("sodium", "sodium-0.6.0.jar", "v1")]).await.unwrap();
-        place(&dirs, instance, "mods/sodium-0.6.0.jar").await;
+        store.save(pack, &[entry("sodium", "sodium-0.6.0.jar", "v1")]).await.unwrap();
+        place(&dirs, pack, "mods/sodium-0.6.0.jar").await;
 
         // Stand in for install() without the download: same bookkeeping.
-        let mut entries = store.list(instance).await.unwrap();
+        let mut entries = store.list(pack).await.unwrap();
         let updated = entry("sodium", "sodium-0.6.1.jar", "v2");
         for existing in entries.iter().filter(|e| e.identity() == updated.identity()) {
             if existing.path != updated.path {
@@ -324,9 +324,9 @@ mod tests {
         }
         entries.retain(|e| e.identity() != updated.identity());
         entries.push(updated);
-        store.save(instance, &entries).await.unwrap();
+        store.save(pack, &entries).await.unwrap();
 
-        assert_eq!(store.list(instance).await.unwrap().len(), 1);
+        assert_eq!(store.list(pack).await.unwrap().len(), 1);
         assert!(tokio::fs::metadata(game_dir.join("mods/sodium-0.6.0.jar")).await.is_err());
 
         let _ = tokio::fs::remove_dir_all(root).await;

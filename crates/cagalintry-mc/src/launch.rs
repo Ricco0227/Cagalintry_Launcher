@@ -71,9 +71,9 @@ impl LaunchOptions {
         Self {
             session,
             game_dir: game_dir.into(),
-            // Comfortable for a modded instance without inviting the GC pauses
+            // Comfortable for a modded pack without inviting the GC pauses
             // that come from handing the JVM most of the machine.
-            max_memory_mb: 4096,
+            max_memory_mb: 8192,
             min_memory_mb: 512,
             extra_jvm_args: Vec::new(),
             extra_game_args: Vec::new(),
@@ -417,7 +417,7 @@ mod tests {
         build_command(
             resolved,
             &java(),
-            &LaunchOptions::new(session(), "C:/data/instances/x/minecraft"),
+            &LaunchOptions::new(session(), "C:/data/packs/x/minecraft"),
             Path::new("C:/data/assets"),
             &platform(),
         )

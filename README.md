@@ -12,14 +12,14 @@
 ## What this is
 
 A desktop Minecraft launcher built for a small private group. It does the usual
-launcher things — instances, mod loaders, Modrinth content, Microsoft accounts —
+launcher things — modpacks, mod loaders, Modrinth content, Microsoft accounts —
 and one thing most launchers don't: it keeps a modpack in sync across everyone
 who plays on the server, without that modpack ever being published anywhere.
 
 One person creates a pack. Private packs are visible only to their owner; public
 packs appear for everyone with an account. When the owner adds, updates or
 removes a mod, everyone else's **Play** button becomes **Update**. Updating is
-always a deliberate click — the launcher never rewrites your instance behind
+always a deliberate click — the launcher never rewrites your modpack behind
 your back, and worlds are never touched.
 
 Mods, resource packs and shader packs all sync. Config files sync too, with your
@@ -34,7 +34,7 @@ launch Minecraft.
 | Phase | | |
 |---|---|---|
 | 0 | Workspace, Tauri app, design system | ✅ done |
-| 1 | Vanilla instance install + launch | 🚧 next |
+| 1 | Vanilla modpack install + launch | 🚧 next |
 | 2 | Microsoft accounts | |
 | 3 | Full UI | |
 | 4 | Fabric, Quilt, NeoForge | |

@@ -4,7 +4,7 @@
 
 mod commands;
 mod content;
-mod instance;
+mod pack;
 mod primary_action;
 mod settings;
 mod state;
@@ -22,7 +22,7 @@ fn main() {
         .init();
 
     tauri::Builder::default()
-        // Two launchers sharing one instance directory would race on the same
+        // Two launchers sharing one pack directory would race on the same
         // files, so a second launch focuses the existing window instead.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -34,16 +34,16 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::app_version,
-            commands::list_instances,
-            commands::get_instance,
+            commands::list_packs,
+            commands::get_pack,
             commands::list_minecraft_versions,
             commands::list_loader_versions,
-            commands::create_instance,
-            commands::update_instance,
-            commands::delete_instance,
-            commands::open_instance_folder,
-            commands::launch_instance,
-            commands::kill_instance,
+            commands::create_pack,
+            commands::update_pack,
+            commands::delete_pack,
+            commands::open_pack_folder,
+            commands::launch_pack,
+            commands::kill_pack,
             commands::search_content,
             commands::get_project,
             commands::list_project_versions,

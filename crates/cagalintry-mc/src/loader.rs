@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn a_loader_without_a_pinned_version_falls_back_to_vanilla() {
-        // An instance can name a loader before a build has been chosen; that
+        // A pack can name a loader before a build has been chosen; that
         // must launch vanilla rather than a profile id with a hole in it.
         assert_eq!(profile_version_id(LoaderKind::Fabric, "1.21.4", ""), "1.21.4");
     }

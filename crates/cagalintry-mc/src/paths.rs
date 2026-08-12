@@ -1,9 +1,9 @@
 //! Where the launcher keeps things on disk.
 //!
-//! Libraries, assets and Java runtimes are shared across every instance and
-//! deduplicated by content, so a second instance of the same version costs
+//! Libraries, assets and Java runtimes are shared across every modpack and
+//! deduplicated by content, so a second modpack on the same version costs
 //! almost nothing. Only what genuinely differs — mods, config, worlds, options
-//! — lives inside the instance itself.
+//! — lives inside the modpack itself.
 
 use std::path::{Path, PathBuf};
 
@@ -56,7 +56,7 @@ impl DataDirs {
         self.version_dir(version_id).join(format!("{version_id}.jar"))
     }
 
-    /// Maven-style library tree, shared by every instance.
+    /// Maven-style library tree, shared by every modpack.
     pub fn libraries(&self) -> PathBuf {
         self.root.join("libraries")
     }
@@ -100,18 +100,18 @@ impl DataDirs {
         self.java().join(component)
     }
 
-    /// Natives are extracted per version, not per instance — the contents are
+    /// Natives are extracted per version, not per modpack — the contents are
     /// a pure function of the version.
     pub fn natives(&self, version_id: &str) -> PathBuf {
         self.root.join("natives").join(version_id)
     }
 
-    pub fn instances(&self) -> PathBuf {
-        self.root.join("instances")
+    pub fn packs(&self) -> PathBuf {
+        self.root.join("packs")
     }
 
-    pub fn instance(&self, id: &str) -> InstanceDirs {
-        InstanceDirs { root: self.instances().join(id) }
+    pub fn pack(&self, id: &str) -> PackDirs {
+        PackDirs { root: self.packs().join(id) }
     }
 
     /// Partial downloads, staged updates, and anything else safe to delete.
@@ -131,7 +131,7 @@ impl DataDirs {
             self.asset_indexes(),
             self.asset_objects(),
             self.java(),
-            self.instances(),
+            self.packs(),
             self.cache(),
             self.logs(),
         ] {
@@ -141,20 +141,20 @@ impl DataDirs {
     }
 }
 
-/// One instance's own files.
+/// One modpack's own files.
 #[derive(Debug, Clone)]
-pub struct InstanceDirs {
+pub struct PackDirs {
     root: PathBuf,
 }
 
-impl InstanceDirs {
+impl PackDirs {
     pub fn root(&self) -> &Path {
         &self.root
     }
 
     /// The game's working directory — what vanilla calls `.minecraft`.
     ///
-    /// Nested inside the instance rather than being the instance root so that
+    /// Nested inside the modpack rather than being the modpack root so that
     /// launcher bookkeeping can sit alongside it without ever appearing in the
     /// game's own directory listing.
     pub fn game_dir(&self) -> PathBuf {
@@ -162,7 +162,7 @@ impl InstanceDirs {
     }
 
     pub fn config_file(&self) -> PathBuf {
-        self.root.join("instance.json")
+        self.root.join("pack.json")
     }
 
     pub fn mods(&self) -> PathBuf {
@@ -187,8 +187,8 @@ impl InstanceDirs {
     }
 
     /// Where a pack update assembles files before they are moved into place, so
-    /// an interrupted update leaves the instance untouched rather than half
-    /// written. Inside the instance so the move is same-volume, and therefore
+    /// an interrupted update leaves the modpack untouched rather than half
+    /// written. Inside the modpack so the move is same-volume, and therefore
     /// atomic-ish rather than a copy.
     pub fn staging(&self) -> PathBuf {
         self.root.join(".cagalintry").join("staging")
@@ -228,14 +228,14 @@ mod tests {
     }
 
     #[test]
-    fn shared_content_lives_outside_instances() {
-        // The point of the layout: two instances on 1.21.4 share one copy of
+    fn shared_content_lives_outside_packs() {
+        // The point of the layout: two modpacks on 1.21.4 share one copy of
         // every library, asset and Java runtime.
         let d = dirs();
         assert!(d.libraries().ends_with("libraries"));
         assert!(d.assets().ends_with("assets"));
         assert!(d.java_component("java-runtime-delta").ends_with("java-runtime-delta"));
-        assert!(!d.libraries().starts_with(d.instances()));
+        assert!(!d.libraries().starts_with(d.packs()));
     }
 
     #[test]
@@ -245,19 +245,19 @@ mod tests {
     }
 
     #[test]
-    fn the_game_directory_is_nested_inside_the_instance() {
-        // Keeps instance.json and staging out of the game's own directory.
-        let instance = dirs().instance("abc");
-        assert!(instance.game_dir().starts_with(instance.root()));
-        assert!(instance.config_file().starts_with(instance.root()));
-        assert!(!instance.config_file().starts_with(instance.game_dir()));
+    fn the_game_directory_is_nested_inside_the_pack() {
+        // Keeps pack.json and staging out of the game's own directory.
+        let pack = dirs().pack("abc");
+        assert!(pack.game_dir().starts_with(pack.root()));
+        assert!(pack.config_file().starts_with(pack.root()));
+        assert!(!pack.config_file().starts_with(pack.game_dir()));
     }
 
     #[test]
-    fn staging_is_on_the_same_volume_as_the_instance() {
+    fn staging_is_on_the_same_volume_as_the_pack() {
         // Otherwise applying an update degrades from a rename into a copy.
-        let instance = dirs().instance("abc");
-        assert!(instance.staging().starts_with(instance.root()));
+        let pack = dirs().pack("abc");
+        assert!(pack.staging().starts_with(pack.root()));
     }
 
     #[test]

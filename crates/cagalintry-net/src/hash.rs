@@ -43,7 +43,7 @@ pub fn sha512_hex(bytes: &[u8]) -> String {
     hex::encode(sha2::Sha512::digest(bytes))
 }
 
-/// Streams the file rather than reading it whole — instance content includes
+/// Streams the file rather than reading it whole — pack content includes
 /// multi-hundred-megabyte packs, and holding those in memory to hash them is
 /// needless pressure.
 pub async fn sha1_file(path: &Path) -> Result<String, HashError> {

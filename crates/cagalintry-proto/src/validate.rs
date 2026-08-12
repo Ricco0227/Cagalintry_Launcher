@@ -2,7 +2,7 @@
 //!
 //! A manifest is untrusted input even when it comes from your own sync server —
 //! a compromised or buggy publisher must not be able to write a file outside the
-//! instance directory or pull a jar from an arbitrary host. Both the launcher
+//! pack directory or pull a jar from an arbitrary host. Both the launcher
 //! and the server run these checks; neither trusts the other to have done it.
 
 use thiserror::Error;
@@ -41,7 +41,7 @@ pub enum ValidationError {
     #[error("path `{0}` must be relative and use forward slashes")]
     PathNotRelative(String),
 
-    #[error("path `{0}` escapes the instance directory")]
+    #[error("path `{0}` escapes the pack directory")]
     PathTraversal(String),
 
     #[error("path `{0}` contains a component that is invalid on Windows")]
@@ -72,7 +72,7 @@ pub enum ValidationError {
     BadHash { field: &'static str, expected: usize },
 }
 
-/// Accepts only paths that stay inside the instance directory.
+/// Accepts only paths that stay inside the pack directory.
 ///
 /// Rejects absolute paths, drive letters, `..`, backslashes, control characters,
 /// and the Windows-specific traps (reserved device names, trailing dots or

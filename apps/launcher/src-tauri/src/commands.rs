@@ -1,6 +1,6 @@
 //! The IPC surface the frontend calls.
 //!
-//! Commands stay thin: claim the instance, delegate to the crates that do the
+//! Commands stay thin: claim the modpack, delegate to the crates that do the
 //! real work, and translate progress into events the UI can render. Anything
 //! worth testing lives below this layer, where it can be tested without a
 //! webview.
@@ -13,7 +13,7 @@ use cagalintry_mc::launch::{self, GameOutput, LaunchOptions, LaunchSession};
 use cagalintry_net::DownloadEvent;
 use cagalintry_mc::LoaderVersion;
 use cagalintry_modrinth::{
-    ProjectPage, SearchQuery, SearchResults, Version as ModrinthVersion, VersionFilter,
+    ProjectPage, SearchQuery, SearchResults, SearchSort, Version as ModrinthVersion, VersionFilter,
 };
 use cagalintry_proto::{EntryKind, LoaderKind, LoaderSpec, PackEntry};
 use serde::Serialize;
@@ -22,8 +22,8 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::instance::Instance;
-use crate::primary_action::{InstanceStatus, PrimaryAction, resolve};
+use crate::pack::Pack;
+use crate::primary_action::{PackStatus, PrimaryAction, resolve};
 use crate::settings::{Settings, SettingsPatch};
 use crate::state::{AppState, CommandError, CommandResult};
 
@@ -36,13 +36,13 @@ const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(
 // Views
 // ---------------------------------------------------------------------------
 
-/// An instance as the Library renders it, with the button state already
+/// A modpack as the Library renders it, with the button state already
 /// resolved so the frontend never has to reimplement those rules.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct InstanceView {
+pub struct PackView {
     #[serde(flatten)]
-    pub instance: Instance,
+    pub pack: Pack,
     pub action: PrimaryAction,
 }
 
@@ -56,7 +56,7 @@ pub struct VersionSummary {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallProgress {
-    pub instance_id: Uuid,
+    pub pack_id: Uuid,
     /// Human-readable stage: "Resolving", "Downloading", "Preparing Java".
     pub stage: String,
     pub completed_files: u64,
@@ -68,7 +68,7 @@ pub struct InstallProgress {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameLogLine {
-    pub instance_id: Uuid,
+    pub pack_id: Uuid,
     pub line: String,
     pub is_stderr: bool,
 }
@@ -76,7 +76,7 @@ pub struct GameLogLine {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameExit {
-    pub instance_id: Uuid,
+    pub pack_id: Uuid,
     pub code: Option<i32>,
     /// Anything other than a clean zero is surfaced to the player rather than
     /// disappearing silently.
@@ -93,13 +93,13 @@ pub fn app_version() -> &'static str {
 }
 
 #[tauri::command]
-pub async fn list_instances(state: State<'_, Arc<AppState>>) -> CommandResult<Vec<InstanceView>> {
-    let instances = state.instances.list().await?;
+pub async fn list_packs(state: State<'_, Arc<AppState>>) -> CommandResult<Vec<PackView>> {
+    let packs = state.packs.list().await?;
 
-    let mut views = Vec::with_capacity(instances.len());
-    for instance in instances {
-        let action = instance_action(&state, &instance).await;
-        views.push(InstanceView { instance, action });
+    let mut views = Vec::with_capacity(packs.len());
+    for pack in packs {
+        let action = pack_action(&state, &pack).await;
+        views.push(PackView { pack, action });
     }
     Ok(views)
 }
@@ -129,35 +129,35 @@ pub async fn list_loader_versions(
 }
 
 #[tauri::command]
-pub async fn create_instance(
+pub async fn create_pack(
     state: State<'_, Arc<AppState>>,
     name: String,
     mc_version: String,
     loader: Option<LoaderSpec>,
-) -> CommandResult<InstanceView> {
-    let mut instance = Instance::new(name, mc_version, loader.unwrap_or_else(LoaderSpec::vanilla));
-    // New instances start from the launcher-wide default; the instance's own
+) -> CommandResult<PackView> {
+    let mut pack = Pack::new(name, mc_version, loader.unwrap_or_else(LoaderSpec::vanilla));
+    // New packs start from the launcher-wide default; the pack's own
     // setting takes over from then on.
-    instance.max_memory_mb = state.settings().await.default_max_memory_mb;
+    pack.max_memory_mb = state.settings().await.default_max_memory_mb;
 
-    state.instances.save(&instance).await?;
+    state.packs.save(&pack).await?;
 
-    let action = instance_action(&state, &instance).await;
-    Ok(InstanceView { instance, action })
+    let action = pack_action(&state, &pack).await;
+    Ok(PackView { pack, action })
 }
 
 #[tauri::command]
-pub async fn get_instance(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<InstanceView> {
-    let instance = state.instances.get(id).await?;
-    let action = instance_action(&state, &instance).await;
-    Ok(InstanceView { instance, action })
+pub async fn get_pack(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<PackView> {
+    let pack = state.packs.get(id).await?;
+    let action = pack_action(&state, &pack).await;
+    Ok(PackView { pack, action })
 }
 
-/// Per-instance settings. Every field optional — the frontend sends only what
+/// Per-pack settings. Every field optional — the frontend sends only what
 /// changed, so two panels editing different fields can't clobber each other.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct InstancePatch {
+pub struct PackPatch {
     pub name: Option<String>,
     pub max_memory_mb: Option<u32>,
     pub java_path: Option<String>,
@@ -165,39 +165,39 @@ pub struct InstancePatch {
 }
 
 #[tauri::command]
-pub async fn update_instance(
+pub async fn update_pack(
     state: State<'_, Arc<AppState>>,
     id: Uuid,
-    patch: InstancePatch,
-) -> CommandResult<InstanceView> {
-    let mut instance = state.instances.get(id).await?;
+    patch: PackPatch,
+) -> CommandResult<PackView> {
+    let mut pack = state.packs.get(id).await?;
 
     if let Some(name) = patch.name {
-        instance.name = name;
+        pack.name = name;
     }
     if let Some(memory) = patch.max_memory_mb {
         // Below 512 MB the game cannot start; the upper bound just stops a
         // stray keystroke asking for a terabyte of heap.
-        instance.max_memory_mb = memory.clamp(512, 65536);
+        pack.max_memory_mb = memory.clamp(512, 65536);
     }
     if let Some(java_path) = patch.java_path {
         // An emptied text field means "use the default", not "use ''".
-        instance.java_path = (!java_path.trim().is_empty()).then(|| java_path.into());
+        pack.java_path = (!java_path.trim().is_empty()).then(|| java_path.into());
     }
     if let Some(args) = patch.extra_jvm_args {
-        instance.extra_jvm_args = args.into_iter().filter(|a| !a.trim().is_empty()).collect();
+        pack.extra_jvm_args = args.into_iter().filter(|a| !a.trim().is_empty()).collect();
     }
 
-    state.instances.save(&instance).await?;
-    let action = instance_action(&state, &instance).await;
-    Ok(InstanceView { instance, action })
+    state.packs.save(&pack).await?;
+    let action = pack_action(&state, &pack).await;
+    Ok(PackView { pack, action })
 }
 
 // ---------------------------------------------------------------------------
 // Content
 // ---------------------------------------------------------------------------
 
-/// Search Modrinth, scoped to what an instance can actually use.
+/// Search Modrinth, scoped to what a pack can actually use.
 #[tauri::command]
 pub async fn search_content(
     state: State<'_, Arc<AppState>>,
@@ -205,6 +205,7 @@ pub async fn search_content(
     query: String,
     mc_version: Option<String>,
     loader: Option<LoaderKind>,
+    sort: Option<SearchSort>,
     offset: Option<u32>,
     limit: Option<u32>,
 ) -> CommandResult<SearchResults> {
@@ -213,6 +214,7 @@ pub async fn search_content(
         kind,
         mc_version,
         loader,
+        sort: sort.unwrap_or_default(),
         offset: offset.unwrap_or(0),
         limit: limit.unwrap_or(20),
     };
@@ -229,20 +231,29 @@ pub async fn get_project(
     Ok(state.modrinth().project(&project_id).await?.into())
 }
 
-/// Every version of a project this instance could use, newest first.
+/// Versions of a project, newest first.
+///
+/// With a pack id, narrowed to what that pack could actually install. Without
+/// one — browsing from Discover, where nothing is installable — every version
+/// is listed, because there is no pack whose compatibility could define
+/// "usable".
 #[tauri::command]
 pub async fn list_project_versions(
     state: State<'_, Arc<AppState>>,
-    id: Uuid,
+    id: Option<Uuid>,
     project_id: String,
     kind: EntryKind,
 ) -> CommandResult<Vec<ModrinthVersion>> {
-    let instance = state.instances.get(id).await?;
-
-    let filter = VersionFilter {
-        mc_version: Some(instance.mc_version),
-        loader: Some(instance.loader.kind),
-        apply_loader: kind == EntryKind::Mod,
+    let filter = match id {
+        Some(id) => {
+            let pack = state.packs.get(id).await?;
+            VersionFilter {
+                mc_version: Some(pack.mc_version),
+                loader: Some(pack.loader.kind),
+                apply_loader: kind == EntryKind::Mod,
+            }
+        }
+        None => VersionFilter::default(),
     };
 
     Ok(state.modrinth().versions(&project_id, &filter).await?)
@@ -256,7 +267,7 @@ pub async fn list_content(
     Ok(state.content().list(id).await?)
 }
 
-/// Install content into an instance, together with anything it requires.
+/// Install content into a pack, together with anything it requires.
 ///
 /// `version_id` pins an exact build; without it the newest compatible release
 /// is chosen. Required dependencies are resolved transitively — installing a
@@ -270,13 +281,13 @@ pub async fn install_content(
     kind: EntryKind,
     version_id: Option<String>,
 ) -> CommandResult<Vec<PackEntry>> {
-    let instance = state.instances.get(id).await?;
+    let pack = state.packs.get(id).await?;
     let client = state.modrinth();
     let content = state.content();
 
     let filter = VersionFilter {
-        mc_version: Some(instance.mc_version.clone()),
-        loader: Some(instance.loader.kind),
+        mc_version: Some(pack.mc_version.clone()),
+        loader: Some(pack.loader.kind),
         // Resource and shader packs declare no loader; filtering by one would
         // reject every version they have.
         apply_loader: kind == EntryKind::Mod,
@@ -355,37 +366,37 @@ pub fn data_directory(state: State<'_, Arc<AppState>>) -> String {
 }
 
 #[tauri::command]
-pub async fn delete_instance(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<()> {
+pub async fn delete_pack(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<()> {
     if state.is_running(id).await {
         return Err(CommandError::new(
             "running",
-            "close the game before deleting this instance",
+            "close the game before deleting this pack",
         ));
     }
-    state.instances.delete(id).await?;
+    state.packs.delete(id).await?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn open_instance_folder(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<String> {
-    Ok(state.instances.game_dir(id).display().to_string())
+pub async fn open_pack_folder(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<String> {
+    Ok(state.packs.game_dir(id).display().to_string())
 }
 
 /// Install whatever is missing and start the game.
 ///
-/// Safe to call twice: the second call finds the instance claimed and returns
+/// Safe to call twice: the second call finds the pack claimed and returns
 /// immediately rather than racing the first over the same files.
 #[tauri::command]
-pub async fn launch_instance(
+pub async fn launch_pack(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     id: Uuid,
 ) -> CommandResult<()> {
     if state.is_running(id).await {
-        return Err(CommandError::new("running", "this instance is already running"));
+        return Err(CommandError::new("running", "this pack is already running"));
     }
     if !state.try_claim(id).await {
-        return Err(CommandError::new("busy", "this instance is already being prepared"));
+        return Err(CommandError::new("busy", "this pack is already being prepared"));
     }
 
     let result = prepare_and_launch(&app, &state, id).await;
@@ -394,7 +405,7 @@ pub async fn launch_instance(
 }
 
 async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) -> CommandResult<()> {
-    let mut instance = state.instances.get(id).await?;
+    let mut pack = state.packs.get(id).await?;
     let session = session_for_launch()?;
 
     emit_stage(app, id, "Resolving version");
@@ -406,7 +417,7 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
     // loader profile inherits from it, and NeoForge additionally needs the
     // vanilla client jar and a JVM on disk before its install can even run —
     // its patched client is derived from them locally.
-    let vanilla = installer.resolve(&installer.version_detail(&manifest, &instance.mc_version).await?)?;
+    let vanilla = installer.resolve(&installer.version_detail(&manifest, &pack.mc_version).await?)?;
 
     let plan = installer.plan(&vanilla).await?;
     let (progress, pump) =
@@ -416,7 +427,7 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
     installer.install(&vanilla, Some(&progress)).await?;
 
     emit_stage(app, id, "Preparing Java");
-    let java_override = state.java_override(instance.java_path.as_deref()).await;
+    let java_override = state.java_override(pack.java_path.as_deref()).await;
     let java = state
         .java()
         .provide(
@@ -430,17 +441,17 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
     // With vanilla in place, the loader profile can be produced and then
     // resolved like any other version document — everything below this point
     // is loader-agnostic.
-    let resolved = if instance.loader.kind == LoaderKind::Vanilla {
+    let resolved = if pack.loader.kind == LoaderKind::Vanilla {
         vanilla
     } else {
-        emit_stage(app, id, &format!("Installing {}", instance.loader.kind.display_name()));
+        emit_stage(app, id, &format!("Installing {}", pack.loader.kind.display_name()));
 
         let version_id = state
             .loaders()
             .ensure_profile(
-                instance.loader.kind,
-                &instance.mc_version,
-                instance.loader.version.as_deref().unwrap_or_default(),
+                pack.loader.kind,
+                &pack.mc_version,
+                pack.loader.version.as_deref().unwrap_or_default(),
                 &java.executable,
                 &vanilla.client_jar,
                 Some(&progress),
@@ -460,9 +471,9 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
     drop(progress);
     let _ = pump.await;
 
-    let mut options = LaunchOptions::new(session, state.instances.game_dir(id));
-    options.max_memory_mb = instance.max_memory_mb;
-    options.extra_jvm_args = instance.extra_jvm_args.clone();
+    let mut options = LaunchOptions::new(session, state.packs.game_dir(id));
+    options.max_memory_mb = pack.max_memory_mb;
+    options.extra_jvm_args = pack.extra_jvm_args.clone();
 
     let command = launch::build_command(
         &resolved,
@@ -471,7 +482,7 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
         &state.dirs.assets(),
         &cagalintry_mc::Platform::current(),
     );
-    tracing::info!(instance = %id, command = %command.to_redacted_string(), "launching");
+    tracing::info!(pack = %id, command = %command.to_redacted_string(), "launching");
 
     let (log_tx, log_rx) = mpsc::unbounded_channel();
     let child = launch::spawn(&command, Some(log_tx)).await?;
@@ -481,14 +492,14 @@ async fn prepare_and_launch(app: &AppHandle, state: &Arc<AppState>, id: Uuid) ->
     let child = state.register_running(id, child).await;
     watch_for_exit(app.clone(), Arc::clone(state), id, child);
 
-    instance.last_played = Some(OffsetDateTime::now_utc());
-    state.instances.save(&instance).await?;
+    pack.last_played = Some(OffsetDateTime::now_utc());
+    state.packs.save(&pack).await?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn kill_instance(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<()> {
+pub async fn kill_pack(state: State<'_, Arc<AppState>>, id: Uuid) -> CommandResult<()> {
     let Some(child) = state.running_child(id).await else {
         return Ok(());
     };
@@ -500,12 +511,12 @@ pub async fn kill_instance(state: State<'_, Arc<AppState>>, id: Uuid) -> Command
 // Helpers
 // ---------------------------------------------------------------------------
 
-async fn instance_action(state: &AppState, instance: &Instance) -> PrimaryAction {
-    resolve(InstanceStatus {
+async fn pack_action(state: &AppState, pack: &Pack) -> PrimaryAction {
+    resolve(PackStatus {
         has_linked_minecraft_account: has_linked_account(),
-        busy: state.is_busy(instance.id).await,
-        running: state.is_running(instance.id).await,
-        installed_revision: instance.pack.as_ref().map(|p| p.installed_revision),
+        busy: state.is_busy(pack.id).await,
+        running: state.is_running(pack.id).await,
+        installed_revision: pack.installed_revision,
         // Populated once the sync client lands; until then there is no pack
         // head to compare against and the button stays on Play.
         head_revision: None,
@@ -536,11 +547,11 @@ fn session_for_launch() -> CommandResult<LaunchSession> {
     ))
 }
 
-fn emit_stage(app: &AppHandle, instance_id: Uuid, stage: &str) {
+fn emit_stage(app: &AppHandle, pack_id: Uuid, stage: &str) {
     let _ = app.emit(
         "install://progress",
         InstallProgress {
-            instance_id,
+            pack_id,
             stage: stage.to_string(),
             completed_files: 0,
             total_files: 0,
@@ -556,7 +567,7 @@ fn emit_stage(app: &AppHandle, instance_id: Uuid, stage: &str) {
 /// once the sender is dropped and the final total has been emitted.
 fn progress_channel(
     app: AppHandle,
-    instance_id: Uuid,
+    pack_id: Uuid,
     total_files: u64,
     total_bytes: u64,
 ) -> (cagalintry_net::ProgressSender, tokio::task::JoinHandle<()>) {
@@ -572,7 +583,7 @@ fn progress_channel(
             let _ = app.emit(
                 "install://progress",
                 InstallProgress {
-                    instance_id,
+                    pack_id,
                     stage: stage.to_string(),
                     completed_files: files.load(Ordering::Relaxed),
                     total_files,
@@ -605,13 +616,13 @@ fn progress_channel(
     (tx, handle)
 }
 
-fn forward_logs(app: AppHandle, instance_id: Uuid, mut rx: mpsc::UnboundedReceiver<GameOutput>) {
+fn forward_logs(app: AppHandle, pack_id: Uuid, mut rx: mpsc::UnboundedReceiver<GameOutput>) {
     tokio::spawn(async move {
         while let Some(output) = rx.recv().await {
             let _ = app.emit(
                 "game://log",
                 GameLogLine {
-                    instance_id,
+                    pack_id,
                     line: output.line,
                     is_stderr: output.is_stderr,
                 },
@@ -623,7 +634,7 @@ fn forward_logs(app: AppHandle, instance_id: Uuid, mut rx: mpsc::UnboundedReceiv
 fn watch_for_exit(
     app: AppHandle,
     state: Arc<AppState>,
-    instance_id: Uuid,
+    pack_id: Uuid,
     child: Arc<tokio::sync::Mutex<tokio::process::Child>>,
 ) {
     tokio::spawn(async move {
@@ -632,12 +643,12 @@ fn watch_for_exit(
 
         // Clear the running flag before announcing the exit, so a UI that
         // refreshes on the event sees Play rather than a stale Running.
-        state.forget_running(instance_id).await;
+        state.forget_running(pack_id).await;
 
         let _ = app.emit(
             "game://exit",
             GameExit {
-                instance_id,
+                pack_id,
                 code,
                 crashed: code != Some(0),
             },

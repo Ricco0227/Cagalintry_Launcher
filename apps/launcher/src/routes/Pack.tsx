@@ -15,16 +15,15 @@ import {
 } from "lucide-react";
 
 import {
-  deleteInstance,
+  deletePack,
   errorMessage,
-  getInstance,
-  instanceFolder,
+  getPack,
+  packFolder,
   isCommandError,
-  killInstance,
-  launchInstance,
-  updateInstance,
+  killPack,
+  launchPack,
+  updatePack,
 } from "@/lib/api";
-import { accentStyle, coverStyle } from "@/lib/accent";
 import { useLauncherStore } from "@/lib/store";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/Button";
@@ -43,7 +42,7 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-export function InstancePage() {
+export function PackPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -51,19 +50,19 @@ export function InstancePage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState(false);
 
-  const instance = useQuery({
-    queryKey: ["instance", id],
-    queryFn: () => getInstance(id),
+  const pack = useQuery({
+    queryKey: ["pack", id],
+    queryFn: () => getPack(id),
     enabled: id !== "",
   });
 
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ["instance", id] });
-    void queryClient.invalidateQueries({ queryKey: ["instances"] });
+    void queryClient.invalidateQueries({ queryKey: ["pack", id] });
+    void queryClient.invalidateQueries({ queryKey: ["packs"] });
   };
 
   const launch = useMutation({
-    mutationFn: () => launchInstance(id),
+    mutationFn: () => launchPack(id),
     onSettled: refresh,
     onError: (err) => {
       if (isCommandError(err) && (err.code === "busy" || err.code === "running")) return;
@@ -71,31 +70,30 @@ export function InstancePage() {
     },
   });
 
-  const stop = useMutation({ mutationFn: () => killInstance(id), onSettled: refresh });
+  const stop = useMutation({ mutationFn: () => killPack(id), onSettled: refresh });
 
   const remove = useMutation({
-    mutationFn: () => deleteInstance(id),
+    mutationFn: () => deletePack(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["instances"] });
+      void queryClient.invalidateQueries({ queryKey: ["packs"] });
       void navigate("/");
     },
     onError: (err) => setNotice(errorMessage(err)),
   });
 
-  if (!instance.data) return null;
-  const data = instance.data;
+  if (!pack.data) return null;
+  const data = pack.data;
 
   return (
-    // The whole page is tinted by this instance: everything below reads
-    // --accent rather than a fixed colour.
-    <div className="flex min-h-0 flex-1 flex-col" style={accentStyle(data.id)}>
-      <header className="relative shrink-0" style={coverStyle(data.id)}>
-        <div className="absolute inset-0" style={{ background: "var(--scrim)" }} />
-
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Plain background for now — pack artwork lands with pack icons, and a
+          hashed gradient in the meantime was standing in for a picture that
+          isn't there yet. */}
+      <header className="relative shrink-0 border-b border-border">
         <div className="relative flex flex-col gap-4 px-8 pt-5 pb-5">
           <Link
             to="/"
-            className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-black/25 px-2.5 py-1.5 text-[12.5px] font-medium text-white/90 backdrop-blur-sm transition-colors hover:bg-black/40"
+            className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12.5px] font-medium text-text-muted transition-colors hover:bg-surface-3 hover:text-text"
           >
             <ArrowLeft size={14} />
             Library
@@ -120,7 +118,7 @@ export function InstancePage() {
             <div className="flex shrink-0 items-center gap-2">
               <Button
                 icon={<FolderOpen size={15} />}
-                onClick={() => void instanceFolder(id).then(openPath)}
+                onClick={() => void packFolder(id).then(openPath)}
               >
                 Folder
               </Button>
@@ -186,12 +184,12 @@ export function InstancePage() {
           (browsing ? (
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-[15px] font-semibold">Add content</h2>
+                <h2 className="text-[15px] font-semibold">Add mods</h2>
                 <Button size="sm" onClick={() => setBrowsing(false)}>
                   Done
                 </Button>
               </div>
-              <ContentBrowser instance={data} onError={setNotice} />
+              <ContentBrowser pack={data} onError={setNotice} />
             </div>
           ) : (
             <div className="flex flex-col gap-4">
@@ -203,11 +201,11 @@ export function InstancePage() {
                   icon={<Plus size={14} />}
                   onClick={() => setBrowsing(true)}
                 >
-                  Add content
+                  Add mods
                 </Button>
               </div>
               <InstalledContent
-                instanceId={id}
+                packId={id}
                 onError={setNotice}
                 onBrowse={() => setBrowsing(true)}
               />
@@ -218,15 +216,15 @@ export function InstancePage() {
           <EmptyState
             icon={<Globe size={24} />}
             title="No worlds yet"
-            description="Worlds live in this instance's saves folder. They are never touched by a pack update and never synced."
+            description="Worlds live in this modpack's saves folder. They are never touched by an update and never synced."
           />
         )}
 
-        {tab === "logs" && <LogsTab instanceId={id} />}
+        {tab === "logs" && <LogsTab packId={id} />}
 
         {tab === "settings" && (
-          <InstanceSettings
-            instanceId={id}
+          <PackSettings
+            packId={id}
             name={data.name}
             maxMemoryMb={data.maxMemoryMb}
             javaPath={data.javaPath ?? ""}
@@ -249,8 +247,8 @@ function Chip({ children, className }: { children: React.ReactNode; className?: 
 }
 
 /** Live game output. */
-function LogsTab({ instanceId }: { instanceId: string }) {
-  const lines = useLauncherStore((state) => state.logs[instanceId]);
+function LogsTab({ packId }: { packId: string }) {
+  const lines = useLauncherStore((state) => state.logs[packId]);
   const clear = useLauncherStore((state) => state.clearLogs);
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -273,7 +271,7 @@ function LogsTab({ instanceId }: { instanceId: string }) {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-[12.5px] text-text-muted tabular-nums">{lines.length} lines</p>
-        <Button size="sm" onClick={() => clear(instanceId)}>
+        <Button size="sm" onClick={() => clear(packId)}>
           Clear
         </Button>
       </div>
@@ -296,8 +294,8 @@ function LogsTab({ instanceId }: { instanceId: string }) {
   );
 }
 
-function InstanceSettings({
-  instanceId,
+function PackSettings({
+  packId,
   name,
   maxMemoryMb,
   javaPath,
@@ -305,7 +303,7 @@ function InstanceSettings({
   onSaved,
   onDelete,
 }: {
-  instanceId: string;
+  packId: string;
   name: string;
   maxMemoryMb: number;
   javaPath: string;
@@ -319,7 +317,7 @@ function InstanceSettings({
   const [draftArgs, setDraftArgs] = useState(extraJvmArgs.join(" "));
 
   const save = useMutation({
-    mutationFn: (patch: Parameters<typeof updateInstance>[1]) => updateInstance(instanceId, patch),
+    mutationFn: (patch: Parameters<typeof updatePack>[1]) => updatePack(packId, patch),
     onSuccess: onSaved,
   });
 
@@ -336,7 +334,7 @@ function InstanceSettings({
         </Field>
       </Section>
 
-      <Section title="Java" description="Overrides the launcher-wide settings for this instance.">
+      <Section title="Java" description="Overrides the launcher-wide settings for this modpack.">
         <Field label="Maximum memory" hint="In megabytes.">
           <input
             type="number"
@@ -381,7 +379,7 @@ function InstanceSettings({
       <Section title="Danger zone">
         <div className="flex items-center justify-between gap-4">
           <p className="text-[12.5px] leading-relaxed text-text-muted">
-            Deleting removes this instance and everything in it, including its worlds. Shared
+            Deleting removes this modpack and everything in it, including its worlds. Shared
             libraries, assets and Java runtimes are left alone.
           </p>
           <Button

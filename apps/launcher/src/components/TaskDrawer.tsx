@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, Loader2 } from "lucide-react";
 
-import { formatBytes, type InstanceView } from "@/lib/api";
+import { formatBytes, type PackView } from "@/lib/api";
 import { useActiveTasks } from "@/lib/store";
 import { cn } from "@/lib/cn";
 
@@ -12,14 +12,14 @@ import { cn } from "@/lib/cn";
  * them, so progress belongs in fixed window chrome rather than inside a route.
  * The drawer hides itself entirely when nothing is running.
  */
-export function TaskDrawer({ instances }: { instances: InstanceView[] }) {
+export function TaskDrawer({ packs }: { packs: PackView[] }) {
   const tasks = useActiveTasks();
   const [collapsed, setCollapsed] = useState(false);
 
   if (tasks.length === 0) return null;
 
-  const nameFor = (instanceId: string) =>
-    instances.find((instance) => instance.id === instanceId)?.name ?? "Instance";
+  const nameFor = (packId: string) =>
+    packs.find((pack) => pack.id === packId)?.name ?? "Pack";
 
   return (
     <div className="pointer-events-none fixed right-5 bottom-5 z-40 w-[320px]">
@@ -51,10 +51,10 @@ export function TaskDrawer({ instances }: { instances: InstanceView[] }) {
                   : null;
 
               return (
-                <div key={task.instanceId} className="flex flex-col gap-1.5">
+                <div key={task.packId} className="flex flex-col gap-1.5">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-[12.5px] font-medium">
-                      {nameFor(task.instanceId)}
+                      {nameFor(task.packId)}
                     </span>
                     <span className="shrink-0 text-[11.5px] text-text-subtle tabular-nums">
                       {percent === null ? task.stage : `${Math.round(percent)}%`}

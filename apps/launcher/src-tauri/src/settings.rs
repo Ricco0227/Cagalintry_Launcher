@@ -31,7 +31,7 @@ pub struct Settings {
     #[serde(default = "default_concurrency")]
     pub download_concurrency: usize,
 
-    /// Applied to newly created instances; existing ones keep their own value.
+    /// Applied to newly created packs; existing ones keep their own value.
     #[serde(default = "default_memory")]
     pub default_max_memory_mb: u32,
 
@@ -58,7 +58,7 @@ const fn default_concurrency() -> usize {
 }
 
 const fn default_memory() -> u32 {
-    4096
+    8192
 }
 
 /// Changes to apply. Every field optional so the frontend can send only what

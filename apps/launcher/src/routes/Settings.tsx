@@ -66,12 +66,12 @@ export function Settings() {
           </Field>
         </Section>
 
-        <Section title="Java" description="Applies to every instance unless one overrides it.">
+        <Section title="Java" description="Applies to every pack unless one overrides it.">
           <JavaPathField settings={settings.data} onSave={(javaPath) => save.mutate({ javaPath })} />
 
           <Field
             label="Default memory"
-            hint="Maximum heap for new instances, in megabytes. More is not always better — beyond what the pack needs, a larger heap mostly makes garbage collection pauses longer."
+            hint="Maximum heap for new packs, in megabytes. More is not always better — beyond what the pack needs, a larger heap mostly makes garbage collection pauses longer."
           >
             <MemoryInput
               value={settings.data.defaultMaxMemoryMb}
@@ -102,7 +102,7 @@ export function Settings() {
         <Section title="Storage">
           <Field
             label="Data folder"
-            hint="Instances, and the shared libraries, assets and Java runtimes every instance draws on."
+            hint="Packs, and the shared libraries, assets and Java runtimes every pack draws on."
           >
             <div className="flex gap-2">
               <input readOnly value={dataDir.data ?? ""} className={cn(inputClass, "flex-1")} data-selectable />

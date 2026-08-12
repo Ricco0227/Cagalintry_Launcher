@@ -31,7 +31,7 @@ pub struct PackManifest {
     pub entries: Vec<PackEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overrides: Option<OverridesRef>,
-    /// Glob patterns, relative to the instance root, that sync must never
+    /// Glob patterns, relative to the pack root, that sync must never
     /// overwrite. Defaults cover the files that are inherently per-player.
     #[serde(default = "default_personal_paths")]
     pub personal_paths: Vec<String>,
@@ -120,7 +120,7 @@ fn default_personal_paths() -> Vec<String> {
 pub struct PackEntry {
     pub kind: EntryKind,
     pub source: ContentSource,
-    /// Destination relative to the instance root, forward slashes only.
+    /// Destination relative to the pack root, forward slashes only.
     pub path: String,
     pub hashes: Hashes,
     pub size: u64,
@@ -196,7 +196,7 @@ pub enum EntryKind {
 impl EntryKind {
     pub const ALL: [EntryKind; 3] = [Self::Mod, Self::ResourcePack, Self::ShaderPack];
 
-    /// The instance-relative directory this kind installs into.
+    /// The pack-relative directory this kind installs into.
     pub const fn directory(self) -> &'static str {
         match self {
             Self::Mod => "mods",

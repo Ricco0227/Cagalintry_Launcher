@@ -56,7 +56,7 @@ pub struct PackDiff {
     pub removed: Vec<PackEntry>,
     pub overrides_changed: bool,
     /// Set when the loader or its version moved. Requires reinstalling the
-    /// loader before the instance can launch.
+    /// loader before the modpack can launch.
     pub loader_change: Option<Change<LoaderSpec>>,
     /// Set when the pack moved to a different Minecraft version. Requires a full
     /// version reinstall, and is worth warning the player about explicitly.

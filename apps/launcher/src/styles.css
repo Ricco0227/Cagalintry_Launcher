@@ -9,7 +9,7 @@
    Semantic tokens.
 
    Components only ever reference these names, never a raw hex value. That is
-   what lets an instance page re-tint itself from its own cover art by
+   what lets an pack page re-tint itself from its own cover art by
    overriding --accent on a single wrapper element.
    --------------------------------------------------------------------------- */
 
@@ -40,6 +40,22 @@
   --success: #3ecf8e;
   --warning: #f5a524;
   --danger: #f4635b;
+
+  /* The primary action's colours. Fixed rather than derived from --accent: the
+     one big button means the same thing in every modpack, so it is always the
+     same colour — green to start the game, orange when there is an update to
+     take first. Deliberately not themed per pack. */
+  --play: #1f9457;
+  --play-hover: #24a462;
+  --play-active: #18804a;
+  --play-fg: #ffffff;
+  --play-ring: rgb(31 148 87 / 0.45);
+
+  --update: #e07b1a;
+  --update-hover: #f08a26;
+  --update-active: #c66a12;
+  --update-fg: #ffffff;
+  --update-ring: rgb(224 123 26 / 0.45);
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.5);
   --shadow-pop: 0 12px 48px -12px rgb(0 0 0 / 0.7);
@@ -73,6 +89,18 @@
   --warning: #b8730a;
   --danger: #d63b34;
 
+  --play: #15804a;
+  --play-hover: #1a9055;
+  --play-active: #106b3d;
+  --play-fg: #ffffff;
+  --play-ring: rgb(21 128 74 / 0.4);
+
+  --update: #c2690e;
+  --update-hover: #d47714;
+  --update-active: #a95a09;
+  --update-fg: #ffffff;
+  --update-ring: rgb(194 105 14 / 0.4);
+
   --shadow-card: 0 1px 2px rgb(16 16 26 / 0.06), 0 8px 24px -12px rgb(16 16 26 / 0.14);
   --shadow-pop: 0 12px 48px -12px rgb(16 16 26 / 0.24);
   --scrim: linear-gradient(to top, rgb(255 255 255 / 0.96) 12%, rgb(255 255 255 / 0.6) 45%, transparent);
@@ -103,6 +131,16 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+
+  --color-play: var(--play);
+  --color-play-hover: var(--play-hover);
+  --color-play-active: var(--play-active);
+  --color-play-fg: var(--play-fg);
+
+  --color-update: var(--update);
+  --color-update-hover: var(--update-hover);
+  --color-update-active: var(--update-active);
+  --color-update-fg: var(--update-fg);
 
   --font-sans: "Segoe UI Variable Display", "Segoe UI", -apple-system,
     BlinkMacSystemFont, "Inter", system-ui, sans-serif;
@@ -151,6 +189,24 @@ textarea,
 [data-selectable] {
   user-select: text;
   cursor: auto;
+}
+
+/* Anything clickable gets the hand. Tailwind 4 dropped Preflight's
+   `cursor: pointer` on buttons to match the bare browser default, which in an
+   app — where `body` is already `cursor: default` — leaves every control
+   feeling inert. Disabled controls are excluded: they aren't clickable, so
+   promising otherwise is worse than saying nothing.
+
+   In `base` rather than unlayered so a deliberate `cursor-*` utility still
+   wins — the already-installed button wants the default arrow, not a hand. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label:has(> input[type="checkbox"]),
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
 }
 
 ::selection {

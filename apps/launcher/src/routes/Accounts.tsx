@@ -1,5 +1,4 @@
-import { ExternalLink, ShieldCheck, UserPlus } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { ShieldCheck, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/Button";
 import { Section } from "@/components/Field";
@@ -64,15 +63,7 @@ export function Accounts() {
         </Section>
 
         <p className="px-1 text-[12px] text-text-subtle">
-          Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.{" "}
-          <button
-            type="button"
-            onClick={() => void openUrl("https://www.minecraft.net/en-us/usage-guidelines")}
-            className="inline-flex items-center gap-1 text-accent hover:underline"
-          >
-            Usage guidelines
-            <ExternalLink size={11} />
-          </button>
+          Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.
         </p>
       </div>
     </Page>

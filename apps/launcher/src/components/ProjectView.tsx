@@ -20,14 +20,18 @@ import {
   listContent,
   listProjectVersions,
   type EntryKind,
-  type InstanceView,
+  type PackView,
 } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { Button } from "./Button";
 
 /**
- * A project's full page: description, gallery, links and every version this
- * instance can use.
+ * A project's full page: description, gallery, links and versions.
+ *
+ * With a `pack` it can install, and its versions are narrowed to that modpack.
+ * Without one — reached from Discover — it is strictly reading material: every
+ * version is listed and nothing can be installed, because there is no modpack
+ * for it to go into.
  *
  * The description arrives as HTML already sanitised in Rust, which is why it can
  * be inserted directly — the untrusted Markdown never reaches the webview.
@@ -35,18 +39,19 @@ import { Button } from "./Button";
 export function ProjectView({
   projectId,
   kind,
-  instance,
+  pack,
   onBack,
   onError,
 }: {
   projectId: string;
   kind: EntryKind;
-  instance: InstanceView;
+  pack: PackView | null;
   onBack: () => void;
   onError: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [showAllVersions, setShowAllVersions] = useState(false);
+  const packId = pack?.id ?? null;
 
   const project = useQuery({
     queryKey: ["project", projectId],
@@ -55,20 +60,21 @@ export function ProjectView({
   });
 
   const versions = useQuery({
-    queryKey: ["project-versions", projectId, instance.id, kind],
-    queryFn: () => listProjectVersions(instance.id, projectId, kind),
+    queryKey: ["project-versions", projectId, packId, kind],
+    queryFn: () => listProjectVersions(packId, projectId, kind),
     staleTime: 5 * 60 * 1000,
   });
 
   const installed = useQuery({
-    queryKey: ["content", instance.id],
-    queryFn: () => listContent(instance.id),
+    queryKey: ["content", packId],
+    queryFn: () => listContent(packId as string),
+    enabled: packId !== null,
   });
 
   const install = useMutation({
     mutationFn: (versionId?: string) =>
-      installContent(instance.id, projectId, kind, versionId),
-    onSuccess: (entries) => queryClient.setQueryData(["content", instance.id], entries),
+      installContent(packId as string, projectId, kind, versionId),
+    onSuccess: (entries) => queryClient.setQueryData(["content", packId], entries),
     onError: (err) => onError(errorMessage(err)),
   });
 
@@ -137,36 +143,38 @@ export function ProjectView({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <button
-            type="button"
-            onClick={() => install.mutate(undefined)}
-            disabled={install.isPending || installedEntry !== undefined}
-            className={cn(
-              "inline-flex h-9 items-center gap-2 rounded-[10px] px-4 text-[13px] font-semibold transition-colors",
-              installedEntry
-                ? "cursor-default bg-surface-2 text-success"
-                : "bg-accent text-accent-fg hover:bg-accent-hover disabled:opacity-60",
+        {pack && (
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={() => install.mutate(undefined)}
+              disabled={install.isPending || installedEntry !== undefined}
+              className={cn(
+                "inline-flex h-9 items-center gap-2 rounded-[10px] px-4 text-[13px] font-semibold transition-colors",
+                installedEntry
+                  ? "cursor-default bg-surface-2 text-success"
+                  : "bg-accent text-accent-fg hover:bg-accent-hover disabled:opacity-60",
+              )}
+            >
+              {installedEntry ? (
+                <>
+                  <Check size={15} /> Installed
+                </>
+              ) : install.isPending ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Installing
+                </>
+              ) : (
+                <>
+                  <Download size={15} /> Install
+                </>
+              )}
+            </button>
+            {installedEntry?.versionNumber && (
+              <span className="text-[11.5px] text-text-subtle">{installedEntry.versionNumber}</span>
             )}
-          >
-            {installedEntry ? (
-              <>
-                <Check size={15} /> Installed
-              </>
-            ) : install.isPending ? (
-              <>
-                <Loader2 size={15} className="animate-spin" /> Installing
-              </>
-            ) : (
-              <>
-                <Download size={15} /> Install
-              </>
-            )}
-          </button>
-          {installedEntry?.versionNumber && (
-            <span className="text-[11.5px] text-text-subtle">{installedEntry.versionNumber}</span>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       <div className="flex flex-wrap gap-2">
@@ -225,14 +233,16 @@ export function ProjectView({
                     </span>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => install.mutate(version.id)}
-                    disabled={install.isPending}
-                    className="shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-medium text-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
-                  >
-                    {installedEntry?.source.versionId === version.id ? "Reinstall" : "Install"}
-                  </button>
+                  {pack && (
+                    <button
+                      type="button"
+                      onClick={() => install.mutate(version.id)}
+                      disabled={install.isPending}
+                      className="shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-medium text-accent transition-colors hover:bg-accent-soft disabled:opacity-50"
+                    >
+                      {installedEntry?.source.versionId === version.id ? "Reinstall" : "Install"}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -251,8 +261,14 @@ export function ProjectView({
           </>
         ) : (
           <p className="text-[12.5px] text-text-subtle">
-            No versions for {instance.mcVersion}
-            {kind === "mod" && instance.loader.kind !== "vanilla" && ` on ${instance.loader.kind}`}.
+            {pack ? (
+              <>
+                No versions for {pack.mcVersion}
+                {kind === "mod" && pack.loader.kind !== "vanilla" && ` on ${pack.loader.kind}`}.
+              </>
+            ) : (
+              "No versions published."
+            )}
           </p>
         )}
       </section>

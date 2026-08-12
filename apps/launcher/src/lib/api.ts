@@ -15,12 +15,11 @@ export interface LoaderSpec {
   version?: string;
 }
 
-export interface PackLink {
-  packId: string;
-  installedRevision: number;
-}
-
-export interface Instance {
+/**
+ * A modpack: a name, a Minecraft version and a loader. It is both the thing you
+ * create and the thing you play — there is no separate instance behind it.
+ */
+export interface Pack {
   id: string;
   name: string;
   mcVersion: string;
@@ -30,7 +29,8 @@ export interface Instance {
   maxMemoryMb: number;
   javaPath?: string;
   extraJvmArgs: string[];
-  pack?: PackLink;
+  /** Absent until the pack is bound to a sync server. */
+  installedRevision?: number;
 }
 
 /**
@@ -45,7 +45,7 @@ export type PrimaryAction =
   | { kind: "update"; changes: number }
   | { kind: "play" };
 
-export interface InstanceView extends Instance {
+export interface PackView extends Pack {
   action: PrimaryAction;
 }
 
@@ -55,7 +55,7 @@ export interface VersionSummary {
 }
 
 export interface InstallProgress {
-  instanceId: string;
+  packId: string;
   stage: string;
   completedFiles: number;
   totalFiles: number;
@@ -64,13 +64,13 @@ export interface InstallProgress {
 }
 
 export interface GameLogLine {
-  instanceId: string;
+  packId: string;
   line: string;
   isStderr: boolean;
 }
 
 export interface GameExit {
-  instanceId: string;
+  packId: string;
   code: number | null;
   crashed: boolean;
 }
@@ -174,7 +174,7 @@ export interface SettingsPatch {
   javaPath?: string | null;
 }
 
-export interface InstancePatch {
+export interface PackPatch {
   name?: string;
   maxMemoryMb?: number;
   javaPath?: string;
@@ -199,7 +199,7 @@ export function errorMessage(error: unknown): string {
 
 // --- commands --------------------------------------------------------------
 
-export const listInstances = () => invoke<InstanceView[]>("list_instances");
+export const listPacks = () => invoke<PackView[]>("list_packs");
 
 export const listMinecraftVersions = () =>
   invoke<VersionSummary[]>("list_minecraft_versions");
@@ -213,21 +213,28 @@ export interface LoaderVersion {
 export const listLoaderVersions = (kind: LoaderKind, mcVersion: string) =>
   invoke<LoaderVersion[]>("list_loader_versions", { kind, mcVersion });
 
-export const createInstance = (name: string, mcVersion: string, loader: LoaderSpec) =>
-  invoke<InstanceView>("create_instance", { name, mcVersion, loader });
+export const createPack = (name: string, mcVersion: string, loader: LoaderSpec) =>
+  invoke<PackView>("create_pack", { name, mcVersion, loader });
 
-export const getInstance = (id: string) => invoke<InstanceView>("get_instance", { id });
+export const getPack = (id: string) => invoke<PackView>("get_pack", { id });
 
-export const updateInstance = (id: string, patch: InstancePatch) =>
-  invoke<InstanceView>("update_instance", { id, patch });
+export const updatePack = (id: string, patch: PackPatch) =>
+  invoke<PackView>("update_pack", { id, patch });
 
-export const deleteInstance = (id: string) => invoke<void>("delete_instance", { id });
+export const deletePack = (id: string) => invoke<void>("delete_pack", { id });
+
+/**
+ * How results are ordered. `relevance` ranks by the search text, and falls back
+ * to downloads when nothing has been typed to be relevant to.
+ */
+export type SearchSort = "relevance" | "downloads" | "follows" | "newest" | "updated";
 
 export const searchContent = (params: {
   kind: EntryKind;
   query: string;
   mcVersion?: string;
   loader?: LoaderKind;
+  sort?: SearchSort;
   offset?: number;
   limit?: number;
 }) => invoke<SearchResults>("search_content", params);
@@ -235,8 +242,16 @@ export const searchContent = (params: {
 export const getProject = (projectId: string) =>
   invoke<ProjectPage>("get_project", { projectId });
 
-export const listProjectVersions = (id: string, projectId: string, kind: EntryKind) =>
-  invoke<ModrinthVersion[]>("list_project_versions", { id, projectId, kind });
+/**
+ * Versions of a project. Pass a pack id to narrow them to what that pack can
+ * install; omit it when browsing from Discover, where nothing is installable
+ * and every version is worth showing.
+ */
+export const listProjectVersions = (
+  id: string | null,
+  projectId: string,
+  kind: EntryKind,
+) => invoke<ModrinthVersion[]>("list_project_versions", { id, projectId, kind });
 
 export const listContent = (id: string) => invoke<PackEntry[]>("list_content", { id });
 
@@ -260,11 +275,11 @@ export const updateSettings = (patch: SettingsPatch) =>
 
 export const dataDirectory = () => invoke<string>("data_directory");
 
-export const launchInstance = (id: string) => invoke<void>("launch_instance", { id });
+export const launchPack = (id: string) => invoke<void>("launch_pack", { id });
 
-export const killInstance = (id: string) => invoke<void>("kill_instance", { id });
+export const killPack = (id: string) => invoke<void>("kill_pack", { id });
 
-export const instanceFolder = (id: string) => invoke<string>("open_instance_folder", { id });
+export const packFolder = (id: string) => invoke<string>("open_pack_folder", { id });
 
 // --- events ----------------------------------------------------------------
 

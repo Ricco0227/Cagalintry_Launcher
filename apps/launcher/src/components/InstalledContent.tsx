@@ -18,34 +18,34 @@ const GROUPS: { kind: EntryKind; title: string }[] = [
   { kind: "shaderpack", title: "Shaders" },
 ];
 
-/** What is installed in an instance, with per-item enable and remove. */
+/** What is installed in a modpack, with per-item enable and remove. */
 export function InstalledContent({
-  instanceId,
+  packId,
   onError,
   onBrowse,
 }: {
-  instanceId: string;
+  packId: string;
   onError: (message: string) => void;
   onBrowse: () => void;
 }) {
   const queryClient = useQueryClient();
   const content = useQuery({
-    queryKey: ["content", instanceId],
-    queryFn: () => listContent(instanceId),
+    queryKey: ["content", packId],
+    queryFn: () => listContent(packId),
   });
 
   const update = (entries: PackEntry[]) =>
-    queryClient.setQueryData(["content", instanceId], entries);
+    queryClient.setQueryData(["content", packId], entries);
 
   const toggle = useMutation({
     mutationFn: ({ path, enabled }: { path: string; enabled: boolean }) =>
-      setContentEnabled(instanceId, path, enabled),
+      setContentEnabled(packId, path, enabled),
     onSuccess: update,
     onError: (err) => onError(errorMessage(err)),
   });
 
   const remove = useMutation({
-    mutationFn: (path: string) => removeContent(instanceId, path),
+    mutationFn: (path: string) => removeContent(packId, path),
     onSuccess: update,
     onError: (err) => onError(errorMessage(err)),
   });
@@ -59,14 +59,14 @@ export function InstalledContent({
       <EmptyState
         icon={<Package size={24} />}
         title="No content installed"
-        description="Add mods, resource packs and shaders from Modrinth. Anything you install here can later be published as a pack for your friends."
+        description="Add mods, resource packs and shaders from Modrinth — only what fits this modpack's Minecraft version and loader is offered. Anything you install here can later be published for your friends."
         action={
           <button
             type="button"
             onClick={onBrowse}
             className="inline-flex h-9 items-center rounded-[10px] bg-accent px-4 text-[13px] font-medium text-accent-fg transition-colors hover:bg-accent-hover"
           >
-            Browse Modrinth
+            Add mods
           </button>
         }
       />
