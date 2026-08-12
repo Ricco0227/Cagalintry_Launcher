@@ -5,10 +5,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use cagalintry_mc::{DataDirs, Installer, JavaProvisioner, LoaderInstaller};
+use cagalintry_modrinth::ModrinthClient;
 use cagalintry_net::Downloader;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::content::ContentStore;
 use crate::instance::InstanceStore;
 use crate::settings::{Settings, SettingsPatch};
 
@@ -20,6 +22,8 @@ pub struct AppState {
     /// Cached so the UI can read settings without touching the disk on every
     /// render; the file stays the source of truth across restarts.
     settings: Mutex<Settings>,
+
+    modrinth: ModrinthClient,
 
     /// Instances with an install or update in flight. The primary button reads
     /// this to render as busy, and command handlers read it to refuse starting
@@ -41,6 +45,7 @@ impl AppState {
 
         Ok(Self {
             instances: InstanceStore::new(dirs.clone()),
+            modrinth: ModrinthClient::new(downloader.clone()),
             dirs,
             downloader,
             settings: Mutex::new(settings),
@@ -77,6 +82,16 @@ impl AppState {
 
     pub fn loaders(&self) -> LoaderInstaller {
         LoaderInstaller::new(self.downloader.clone(), self.dirs.clone())
+    }
+
+    pub fn content(&self) -> ContentStore {
+        ContentStore::new(self.dirs.clone())
+    }
+
+    /// Shared rather than constructed per call, so the rate limiter's window
+    /// covers every request the launcher makes rather than resetting each time.
+    pub fn modrinth(&self) -> &ModrinthClient {
+        &self.modrinth
     }
 
     pub fn java(&self) -> JavaProvisioner {
@@ -154,6 +169,8 @@ command_error_from! {
     cagalintry_mc::JavaError => "java",
     cagalintry_mc::LaunchError => "launch",
     cagalintry_net::DownloadError => "download",
+    cagalintry_modrinth::ModrinthError => "modrinth",
+    crate::content::ContentError => "content",
     std::io::Error => "io",
     anyhow::Error => "internal",
 }

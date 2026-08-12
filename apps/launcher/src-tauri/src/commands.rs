@@ -5,13 +5,15 @@
 //! worth testing lives below this layer, where it can be tested without a
 //! webview.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use cagalintry_mc::launch::{self, GameOutput, LaunchOptions, LaunchSession};
 use cagalintry_net::DownloadEvent;
 use cagalintry_mc::LoaderVersion;
-use cagalintry_proto::{LoaderKind, LoaderSpec};
+use cagalintry_modrinth::{SearchQuery, SearchResults, VersionFilter};
+use cagalintry_proto::{EntryKind, LoaderKind, LoaderSpec, PackEntry};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter as _, State};
 use time::OffsetDateTime;
@@ -187,6 +189,119 @@ pub async fn update_instance(
     state.instances.save(&instance).await?;
     let action = instance_action(&state, &instance).await;
     Ok(InstanceView { instance, action })
+}
+
+// ---------------------------------------------------------------------------
+// Content
+// ---------------------------------------------------------------------------
+
+/// Search Modrinth, scoped to what an instance can actually use.
+#[tauri::command]
+pub async fn search_content(
+    state: State<'_, Arc<AppState>>,
+    kind: EntryKind,
+    query: String,
+    mc_version: Option<String>,
+    loader: Option<LoaderKind>,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> CommandResult<SearchResults> {
+    let search = SearchQuery {
+        text: query,
+        kind,
+        mc_version,
+        loader,
+        offset: offset.unwrap_or(0),
+        limit: limit.unwrap_or(20),
+    };
+    Ok(state.modrinth().search(&search).await?)
+}
+
+#[tauri::command]
+pub async fn list_content(
+    state: State<'_, Arc<AppState>>,
+    id: Uuid,
+) -> CommandResult<Vec<PackEntry>> {
+    Ok(state.content().list(id).await?)
+}
+
+/// Install content into an instance, together with anything it requires.
+///
+/// `version_id` pins an exact build; without it the newest compatible release
+/// is chosen. Required dependencies are resolved transitively — installing a
+/// mod whose library is missing produces a crash on launch, not a clear error,
+/// so leaving that to the player is not a kindness.
+#[tauri::command]
+pub async fn install_content(
+    state: State<'_, Arc<AppState>>,
+    id: Uuid,
+    project_id: String,
+    kind: EntryKind,
+    version_id: Option<String>,
+) -> CommandResult<Vec<PackEntry>> {
+    let instance = state.instances.get(id).await?;
+    let client = state.modrinth();
+    let content = state.content();
+
+    let filter = VersionFilter {
+        mc_version: Some(instance.mc_version.clone()),
+        loader: Some(instance.loader.kind),
+        // Resource and shader packs declare no loader; filtering by one would
+        // reject every version they have.
+        apply_loader: kind == EntryKind::Mod,
+    };
+
+    let mut queue = vec![(project_id, kind, version_id)];
+    let mut seen: HashSet<String> = HashSet::new();
+
+    while let Some((project_id, kind, version_id)) = queue.pop() {
+        if !seen.insert(project_id.clone()) {
+            continue; // already handled, and dependency graphs do contain cycles
+        }
+
+        let version = match version_id {
+            Some(version_id) => client.version(&version_id).await?,
+            None => client.best_version(&project_id, &filter).await?,
+        };
+
+        let project = client.project(&project_id).await?;
+        let Some(entry) = version.to_pack_entry(kind, project.client_side.as_deref()) else {
+            continue; // a version with no downloadable file
+        };
+
+        content.install(id, entry, &state.downloader).await?;
+
+        // A dependency of anything is a mod: a shader pack requiring Iris
+        // requires the mod, not another shader pack.
+        for dependency in version.required_dependencies() {
+            queue.push((dependency.to_string(), EntryKind::Mod, None));
+        }
+    }
+
+    Ok(content.list(id).await?)
+}
+
+#[tauri::command]
+pub async fn remove_content(
+    state: State<'_, Arc<AppState>>,
+    id: Uuid,
+    path: String,
+) -> CommandResult<Vec<PackEntry>> {
+    let content = state.content();
+    content.remove(id, &path).await?;
+    Ok(content.list(id).await?)
+}
+
+#[tauri::command]
+pub async fn set_content_enabled(
+    state: State<'_, Arc<AppState>>,
+    id: Uuid,
+    path: String,
+    enabled: bool,
+) -> CommandResult<Vec<PackEntry>> {
+    let content = state.content();
+    content.set_enabled(id, &path, enabled).await?;
+    Ok(content.list(id).await?)
 }
 
 #[tauri::command]

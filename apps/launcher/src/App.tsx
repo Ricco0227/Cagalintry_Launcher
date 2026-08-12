@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Route, Routes } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Compass, Layers } from "lucide-react";
+import { Layers } from "lucide-react";
 
 import { Rail } from "@/components/Rail";
 import { TitleBar } from "@/components/TitleBar";
@@ -9,6 +9,7 @@ import { TaskDrawer } from "@/components/TaskDrawer";
 import { EmptyState, Page } from "@/components/Page";
 import { Library } from "@/routes/Library";
 import { InstancePage } from "@/routes/Instance";
+import { Discover } from "@/routes/Discover";
 import { Settings } from "@/routes/Settings";
 import { Accounts } from "@/routes/Accounts";
 import {
@@ -106,14 +107,3 @@ function Packs() {
   );
 }
 
-function Discover() {
-  return (
-    <Page title="Discover" subtitle="Browse Modrinth">
-      <EmptyState
-        icon={<Compass size={24} />}
-        title="Modrinth browsing coming soon"
-        description="Search mods, resource packs and shaders, then add them to an instance or straight into a pack."
-      />
-    </Page>
-  );
-}

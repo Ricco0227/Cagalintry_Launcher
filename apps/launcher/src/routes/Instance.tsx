@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Globe,
   Package,
+  Plus,
   ScrollText,
   Settings2,
   Square,
@@ -27,7 +28,9 @@ import { accentStyle, coverStyle } from "@/lib/accent";
 import { useLauncherStore } from "@/lib/store";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/Button";
+import { ContentBrowser } from "@/components/ContentBrowser";
 import { Field, Section, inputClass } from "@/components/Field";
+import { InstalledContent } from "@/components/InstalledContent";
 import { EmptyState } from "@/components/Page";
 import { PrimaryButton } from "@/components/PrimaryButton";
 
@@ -46,6 +49,7 @@ export function InstancePage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<TabId>("content");
   const [notice, setNotice] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState(false);
 
   const instance = useQuery({
     queryKey: ["instance", id],
@@ -178,13 +182,37 @@ export function InstancePage() {
           </div>
         )}
 
-        {tab === "content" && (
-          <EmptyState
-            icon={<Package size={24} />}
-            title="No content yet"
-            description="Mods, resource packs and shader packs will be browsable from Modrinth and installable here."
-          />
-        )}
+        {tab === "content" &&
+          (browsing ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[15px] font-semibold">Add content</h2>
+                <Button size="sm" onClick={() => setBrowsing(false)}>
+                  Done
+                </Button>
+              </div>
+              <ContentBrowser instance={data} onError={setNotice} />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[15px] font-semibold">Installed</h2>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={<Plus size={14} />}
+                  onClick={() => setBrowsing(true)}
+                >
+                  Add content
+                </Button>
+              </div>
+              <InstalledContent
+                instanceId={id}
+                onError={setNotice}
+                onBrowse={() => setBrowsing(true)}
+              />
+            </div>
+          ))}
 
         {tab === "worlds" && (
           <EmptyState

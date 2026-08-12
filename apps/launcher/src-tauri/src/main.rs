@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod content;
 mod instance;
 mod primary_action;
 mod settings;
@@ -43,6 +44,11 @@ fn main() {
             commands::open_instance_folder,
             commands::launch_instance,
             commands::kill_instance,
+            commands::search_content,
+            commands::list_content,
+            commands::install_content,
+            commands::remove_content,
+            commands::set_content_enabled,
             commands::get_settings,
             commands::update_settings,
             commands::data_directory,

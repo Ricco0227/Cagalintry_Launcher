@@ -75,6 +75,43 @@ export interface GameExit {
   crashed: boolean;
 }
 
+/** What kind of content an entry is. Mirrors `EntryKind` in the proto crate. */
+export type EntryKind = "mod" | "resourcepack" | "shaderpack";
+
+export interface PackEntry {
+  kind: EntryKind;
+  source: { type: "modrinth"; projectId: string; versionId: string };
+  path: string;
+  hashes: { sha1: string; sha512: string };
+  size: number;
+  downloads: string[];
+  side: "client" | "both";
+  enabled: boolean;
+  name?: string;
+  versionNumber?: string;
+}
+
+export interface SearchHit {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  author?: string;
+  iconUrl?: string;
+  downloads: number;
+  follows: number;
+  categories: string[];
+  clientSide?: string;
+  serverSide?: string;
+}
+
+export interface SearchResults {
+  hits: SearchHit[];
+  offset: number;
+  limit: number;
+  totalHits: number;
+}
+
 export type Theme = "system" | "light" | "dark";
 
 export interface Settings {
@@ -143,6 +180,30 @@ export const updateInstance = (id: string, patch: InstancePatch) =>
   invoke<InstanceView>("update_instance", { id, patch });
 
 export const deleteInstance = (id: string) => invoke<void>("delete_instance", { id });
+
+export const searchContent = (params: {
+  kind: EntryKind;
+  query: string;
+  mcVersion?: string;
+  loader?: LoaderKind;
+  offset?: number;
+  limit?: number;
+}) => invoke<SearchResults>("search_content", params);
+
+export const listContent = (id: string) => invoke<PackEntry[]>("list_content", { id });
+
+export const installContent = (
+  id: string,
+  projectId: string,
+  kind: EntryKind,
+  versionId?: string,
+) => invoke<PackEntry[]>("install_content", { id, projectId, kind, versionId });
+
+export const removeContent = (id: string, path: string) =>
+  invoke<PackEntry[]>("remove_content", { id, path });
+
+export const setContentEnabled = (id: string, path: string, enabled: boolean) =>
+  invoke<PackEntry[]>("set_content_enabled", { id, path, enabled });
 
 export const getSettings = () => invoke<Settings>("get_settings");
 
